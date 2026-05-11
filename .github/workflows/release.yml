@@ -18,7 +18,7 @@ jobs:
       tythe_released: ${{ steps.release.outputs['packages/tythe--release_created'] }}
       ts_released: ${{ steps.release.outputs['packages/tythe-ts--release_created'] }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           config-file: release-please-config.json
@@ -33,9 +33,9 @@ jobs:
       name: pypi
       url: https://pypi.org/p/tythe
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - working-directory: packages/tythe
@@ -51,9 +51,9 @@ jobs:
     if: needs.release-please.outputs.ts_released == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
