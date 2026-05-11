@@ -55,10 +55,10 @@
   "devDependencies": {
     "@types/node": "25.6.2",
     "@tythe/ts": "workspace:*",
-    "svelte": "5.0.0",
+    "svelte": "5.55.5",
     "tsup": "8.5.1",
     "vite": "8.0.12",
-    "vitest": "4.1.5"
+    "vitest": "4.1.6"
   },
   "peerDependencies": {
     "@tythe/ts": "workspace:*",

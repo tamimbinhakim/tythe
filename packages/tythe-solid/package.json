@@ -56,12 +56,12 @@
   "devDependencies": {
     "@types/node": "25.6.2",
     "@tythe/ts": "workspace:*",
-    "happy-dom": "15.11.7",
-    "solid-js": "1.9.3",
+    "happy-dom": "20.9.0",
+    "solid-js": "1.9.12",
     "tsup": "8.5.1",
     "vite": "8.0.12",
-    "vite-plugin-solid": "2.11.0",
-    "vitest": "4.1.5"
+    "vite-plugin-solid": "2.11.12",
+    "vitest": "4.1.6"
   },
   "peerDependencies": {
     "@tythe/ts": "workspace:*",
