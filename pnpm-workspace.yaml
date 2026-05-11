@@ -1,0 +1,8 @@
+packages:
+  - "packages/*"
+  - "examples/*/frontend"
+
+# Allow build scripts for trusted toolchain deps.
+allowBuilds:
+  esbuild: true
+  sharp: true

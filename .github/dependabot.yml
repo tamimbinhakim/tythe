@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        patterns: ["*"]
+
+  - package-ecosystem: "npm"
+    directory: "/packages/tythe-ts"
+    schedule: { interval: "weekly" }
+
+  - package-ecosystem: "pip"
+    directory: "/packages/tythe"
+    schedule: { interval: "weekly" }
+    open-pull-requests-limit: 10
+    groups:
+      python-dev:
+        dependency-type: "development"
+        patterns: ["*"]

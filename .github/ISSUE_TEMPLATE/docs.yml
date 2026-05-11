@@ -1,0 +1,22 @@
+name: Documentation issue
+description: Something in the docs is wrong, confusing, or missing.
+title: "[docs]: "
+labels: ["docs", "triage"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Which page / section?
+      placeholder: "docs/getting-started.md, README quickstart, etc."
+    validations: { required: true }
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: What's wrong or missing?
+    validations: { required: true }
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix (optional)

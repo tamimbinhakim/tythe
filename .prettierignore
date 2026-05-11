@@ -1,0 +1,38 @@
+# Build output
+**/dist/
+**/build/
+**/.next/
+**/.turbo/
+**/.vercel/
+**/coverage/
+
+# Dependencies
+**/node_modules/
+**/.venv/
+
+# Lockfiles
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+uv.lock
+
+# Generated
+**/*.generated.ts
+**/lib/tythe/client.ts
+**/CHANGELOG.md
+
+# Python (handled by ruff)
+**/*.py
+**/*.pyi
+
+# TS/JS (handled by oxlint + oxfmt)
+**/*.ts
+**/*.tsx
+**/*.js
+**/*.jsx
+**/*.mjs
+**/*.cjs
+
+# Don't touch this
+.gitignore
+.gitattributes

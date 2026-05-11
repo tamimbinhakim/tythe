@@ -1,0 +1,41 @@
+# Build output / deps
+**/dist/
+**/build/
+**/.next/
+**/.turbo/
+**/.vercel/
+**/coverage/
+**/node_modules/
+**/.venv/
+
+# Lockfiles
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+uv.lock
+
+# Generated
+**/*.generated.ts
+**/lib/tythe/client.ts
+
+# Handled by Prettier
+**/*.md
+**/*.json
+**/*.jsonc
+**/*.yml
+**/*.yaml
+
+# Handled by ruff
+**/*.py
+**/*.pyi
+
+# Misc
+.gitignore
+.gitattributes
+.editorconfig
+.python-version
+.nvmrc
+.npmrc
+LICENSE
+**/LICENSE
+**/CHANGELOG.md

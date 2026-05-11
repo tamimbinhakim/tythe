@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+title: "Tythe: a type-safe RPC bridge between Python and TypeScript"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: "Bin Hakim"
+    given-names: "Tamim"
+    alias: "tamimbinhakim"
+url: "https://github.com/tamimbinhakim/tythe"
+repository-code: "https://github.com/tamimbinhakim/tythe"
+license: MIT
+keywords:
+  - python
+  - typescript
+  - rpc
+  - asgi
+  - codegen
+  - streaming
+  - type-safety

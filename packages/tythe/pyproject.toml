@@ -1,0 +1,163 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tythe"
+version = "0.1.0"
+description = "A type-safe RPC bridge between Python and TypeScript. The function signature is the contract."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "Tamim Bin Hakim", email = "tamimbinhakim@users.noreply.github.com" }]
+keywords = [
+  "asgi",
+  "rpc",
+  "trpc",
+  "typescript",
+  "codegen",
+  "streaming",
+  "sse",
+  "msgspec",
+  "fastapi-alternative",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Framework :: AsyncIO",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Internet :: WWW/HTTP",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
+
+dependencies = [
+  "msgspec>=0.19",
+  "starlette>=0.45",
+  "uvicorn[standard]>=0.32",
+  "watchfiles>=1.0",
+  "typer>=0.15",
+  "rich>=14.0",
+  "anyio>=4.6",
+  "python-multipart>=0.0.18",
+]
+
+[project.scripts]
+tythe = "tythe.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/tamimbinhakim/tythe"
+Documentation = "https://github.com/tamimbinhakim/tythe/tree/main/docs"
+Repository = "https://github.com/tamimbinhakim/tythe"
+Issues = "https://github.com/tamimbinhakim/tythe/issues"
+Changelog = "https://github.com/tamimbinhakim/tythe/blob/main/packages/tythe/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+  "pytest>=9.0",
+  "pytest-asyncio>=1.0",
+  "pytest-cov>=7.0",
+  "httpx>=0.28",
+  "ruff>=0.13",
+  "mypy>=1.18",
+  "types-setuptools",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tythe"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/README.md", "/CHANGELOG.md"]
+
+# ---- ruff ----
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "W", # pycodestyle / pyflakes
+  "I", # isort
+  "B", # bugbear
+  "UP", # pyupgrade
+  "SIM", # simplify
+  "C4", # comprehensions
+  "PT", # pytest
+  "RUF", # ruff
+  "TID", # tidy imports
+  "PYI", # type stubs
+  "ANN", # annotations
+]
+ignore = [
+  "ANN401", # allow Any in select cases
+  "E501", # line length handled by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "B017", "PT011"]
+
+# ---- pyright / Pylance ----
+# In tests, ``@app.get(...)`` consumes the decorated function via its side
+# effect (route registration). Pylance can't see that, so it flags every
+# handler as unused. Quiet that *only* for tests; production code keeps strict.
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportUnusedFunction = false
+
+[tool.ruff.lint.flake8-bugbear]
+# ``Depends(...)`` is the FastAPI-shaped DI marker — used as a default arg by
+# design. Whitelisting it here keeps user code free of B008 noise.
+extend-immutable-calls = ["tythe.Depends", "tythe.context.Depends"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tythe"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+# ---- mypy ----
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_any_generics = true
+no_implicit_reexport = true
+files = ["src/tythe"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# ---- pytest ----
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+filterwarnings = ["error"]
+
+# ---- coverage ----
+[tool.coverage.run]
+branch = true
+source = ["tythe"]
+omit = ["src/tythe/cli.py"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\."]

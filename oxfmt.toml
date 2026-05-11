@@ -1,0 +1,14 @@
+# oxfmt formatter configuration
+# https://oxc.rs/docs/guide/usage/formatter
+#
+# oxfmt formats TS/JS only in this repo.
+# Prettier handles markdown / JSON / YAML.
+# ruff format handles Python.
+
+line-width = 100
+indent-width = 2
+quote-style = "double"
+semicolons = "always"
+trailing-comma = "all"
+bracket-spacing = true
+arrow-parens = "always"

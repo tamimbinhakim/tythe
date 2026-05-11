@@ -1,0 +1,45 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "separate-pull-requests": false,
+  "always-link-local": true,
+  "draft": false,
+  "prerelease": false,
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "revert", "section": "Reverts" },
+    { "type": "refactor", "section": "Refactor", "hidden": true },
+    { "type": "docs", "section": "Documentation", "hidden": true },
+    { "type": "test", "section": "Tests", "hidden": true },
+    { "type": "build", "section": "Build", "hidden": true },
+    { "type": "ci", "section": "CI", "hidden": true },
+    { "type": "chore", "section": "Chores", "hidden": true }
+  ],
+  "packages": {
+    "packages/tythe": {
+      "release-type": "python",
+      "package-name": "tythe",
+      "component": "tythe",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": ["src/tythe/__init__.py"]
+    },
+    "packages/tythe-ts": {
+      "release-type": "node",
+      "package-name": "@tythe/ts",
+      "component": "tythe-ts",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/tythe-react": {
+      "release-type": "node",
+      "package-name": "@tythe/react",
+      "component": "tythe-react",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

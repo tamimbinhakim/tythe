@@ -1,0 +1,67 @@
+name: Bug report
+description: Something broke. Help me reproduce it.
+title: "[bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! A minimal reproduction makes this 10x easier to fix.
+        Please fill out as much as you can.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of what you expected vs. what actually happened.
+      placeholder: "I called `api.users.get` and the type came back as `any`..."
+    validations: { required: true }
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: A 20-line script (Python + TS) is worth 1000 words. Code blocks or a link to a repo / sandbox.
+      render: shell
+    validations: { required: true }
+
+  - type: input
+    id: tythe-version
+    attributes:
+      label: Tythe version
+      placeholder: "0.1.3 (run `tythe --version`)"
+    validations: { required: true }
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: "3.12.4"
+    validations: { required: true }
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node version (if relevant)
+      placeholder: "20.18.0"
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, Windows, Other]
+    validations: { required: true }
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / generated TS output
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight
+      options:
+        - { label: "I searched existing issues and discussions", required: true }
+        - { label: "I'm on the latest version of `tythe`", required: false }

@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest an idea or improvement.
+title: "[feat]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! The most useful feature requests describe a real problem you're hitting,
+        not just a feature you want. Tell the story.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: "Start with: 'I was trying to do X and...'"
+    validations: { required: true }
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What do you want to happen?
+      description: API sketch, code snippet, or just a description.
+      render: python
+    validations: { required: true }
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried or considered?
+      description: Workarounds, other libraries, alternative APIs.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Extra context
+      description: Anything else — links, related issues, screenshots.

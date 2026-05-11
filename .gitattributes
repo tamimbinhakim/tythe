@@ -1,0 +1,32 @@
+# Normalize line endings on checkin
+* text=auto eol=lf
+
+# Explicit text files
+*.md       text
+*.json     text
+*.yaml     text
+*.yml      text
+*.toml     text
+*.py       text
+*.ts       text
+*.tsx      text
+*.js       text
+*.mjs      text
+*.cjs      text
+
+# Binary
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.ico      binary
+*.svg      text
+*.woff     binary
+*.woff2    binary
+
+# Generated files - hide from PR diffs
+packages/tythe-client/dist/** linguist-generated
+**/lib/tythe/client.ts        linguist-generated
+CHANGELOG.md                  linguist-generated
+pnpm-lock.yaml                linguist-generated
+uv.lock                       linguist-generated
