@@ -119,19 +119,19 @@ export function createTytheStores<TApi extends object>(api: TApi): TytheStores<T
       data: undefined,
       error: undefined,
       mutate: async (vars: ArgsOf<TApi[K]>) => {
-        inner.update((s) => ({ ...s, status: "loading", error: undefined }));
+        inner.update((s) => ({ ...s, error: undefined, status: "loading" }));
         const fn = api[method] as unknown as Unary;
         try {
           const data = unwrap(await fn(vars as unknown)) as DataOf<TApi[K]>;
-          inner.update((s) => ({ ...s, status: "success", data }));
+          inner.update((s) => ({ ...s, data, status: "success" }));
           return data;
-        } catch (err) {
+        } catch (error) {
           inner.update((s) => ({
             ...s,
+            error: error as ErrorOf<TApi[K]>,
             status: "error",
-            error: err as ErrorOf<TApi[K]>,
           }));
-          throw err;
+          throw error;
         }
       },
       reset: () =>
@@ -139,7 +139,7 @@ export function createTytheStores<TApi extends object>(api: TApi): TytheStores<T
           status: "idle",
           data: undefined,
           error: undefined,
-          // re-bind mutate / reset on reset
+          // Re-bind mutate / reset on reset
           mutate: getStore().mutate,
           reset: getStore().reset,
         }),
@@ -185,8 +185,10 @@ export function createTytheStores<TApi extends object>(api: TApi): TytheStores<T
             }
             set({ error: undefined, status: "closed" });
           } catch (error) {
-            if (controller.signal.aborted) return;
-            set({ status: "error", error: error });
+            if (controller.signal.aborted) {
+              return;
+            }
+            set({ error, status: "error" });
           }
         })();
         return () => controller.abort();
