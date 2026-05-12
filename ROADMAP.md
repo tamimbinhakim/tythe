@@ -7,66 +7,136 @@ If you want to influence it, the highest-leverage move is to open an
 issue saying "I tried to use Tythe for X and it didn't work because Y."
 That's worth more than ten feature requests.
 
-## v0.1 — MVP
+## v0.1 — Shipped
 
-The bet: get the core loop right. Everything else is post-MVP.
+The bet: get the core loop right at the bottom level. Everything else
+either rides on top or doesn't belong inside.
 
-- [x] App / router / handler registration
-- [x] Unary HTTP+JSON with msgspec validation
-- [x] Type extraction → JSON Schema IR
-- [x] TS codegen: single file, Proxy-based client, types, fetch wrapper,
-      AbortSignal
-- [x] `tythe dev`, `tythe build`, `tythe codegen` CLI
-- [x] SSE streaming with `stream[T]` and tagged-union events
-- [x] `@raises(...)` typed errors → `Result<T, E>` on client
-- [x] Multipart file uploads via a generic `File` parameter marker
-- [x] Cookie / header / query / body via `Annotated`
-- [x] DI container compatible with FastAPI's `Depends()`
-- [x] `Bytes` for raw request/response bodies (webhooks, downloads)
-- [x] `after(fn, …)` post-response hook + `ctx.set_status` / `ctx.set_header`
-- [x] `ctx.set_cookie(…)` with `max_age`/`expires`/`path`/`domain`/`secure`/`http_only`/`same_site`
-- [x] List-valued query params (`Annotated[list[T], Query()]` → `?tag=a&tag=b`)
-- [x] `Form()` marker — `Annotated[T, Form()]` decodes urlencoded / multipart bodies
-- [x] Examples for Next.js, Vite/React, and SvelteKit
-- [x] One short hero demo: typed streaming end-to-end in **<50 lines**
+**Wire-level primitives**
 
-## v0.2 — Framework bindings + Pydantic
+- [x] `App` + `@app.{get,post,put,patch,delete}` route decorators.
+- [x] Unary HTTP+JSON with msgspec validation.
+- [x] Parameter location markers (`Path`, `Query`, `Header`, `Cookie`,
+      `Body`, `File`, `Form`) via `Annotated[T, ...]`.
+- [x] List-valued query params (`Annotated[list[T], Query()]`).
+- [x] `Bytes` for raw request/response bodies (webhooks, downloads).
+- [x] `Form()` marker for `application/x-www-form-urlencoded` and
+      multipart bodies.
+- [x] Multipart file uploads via `UploadFile` + `File()`.
+- [x] `stream[T]` typed SSE with tagged-union events and cancellation.
+- [x] `@raises(...)` typed errors → `Result<T, E>` discriminated union
+      on the client.
+- [x] `Context.set_status` / `set_header` / `set_cookie` / `after`
+      response control.
+- [x] Free `after(fn, *a, **kw)` post-response hook via contextvar.
+- [x] `Depends(...)` DI compatible with the FastAPI shape.
+- [x] `Pydantic` plugin (`tythe[pydantic]`) — runtime + IR auto-route
+      Pydantic models through `model_validate` / `model_json_schema`.
 
-Once the core is solid, meet the JS ecosystem where it lives.
+**Codegen + tooling**
 
-- [x] Pydantic plugin (`tythe[pydantic]`) — first-class peer to msgspec
-- Framework-specific binding packages (separate from `@tythe/ts`,
-  which stays framework-agnostic):
-  - [x] `@tythe/react` — `useQuery`, `useMutation`, `useSubscription`
-        on top of TanStack Query
-  - [x] `@tythe/svelte` — store-based bindings
-  - [x] `@tythe/solid` — `createResource`-style bindings
-- [~] `Task[T]` long-running job queue — `TaskBackend` Protocol and
-  `InMemoryBackend` ship; runtime/codegen don't yet recognize a
-  `Task[T]` return annotation, and Redis / SQS adapters are
-  separate packages.
+- [x] Type extraction → JSON-Schema-2020-12 IR via msgspec.
+- [x] TypeScript codegen: single file, Proxy-based client, types,
+      fetch wrapper, AbortSignal, snake_case ↔ camelCase translation.
+- [x] `tythe dev` / `build` / `codegen` / `init` CLI.
+- [x] `tythe openapi` — OpenAPI 3.1 export off the same IR.
+- [x] `tythe swift` / `tythe kotlin` — working HTTP clients (typed
+      args + responses, typed `@raises` enums, snake_case mapping).
+- [x] `tythe deploy fly|render|modal` — thin wrapper around provider
+      CLIs.
 
-## v0.3+ — Polyglot, auth, observability
+**Framework bindings (separate packages)**
 
-- [ ] WebSocket bidirectional (`bidi[Send, Recv]`) — not started.
-- [x] Auth recipes (NextAuth, Clerk, custom JWT) — see [`docs/auth.md`](./docs/auth.md)
-- [x] Optional OpenAPI 3.1 export via `tythe openapi` for users who also
-      need to serve external clients
-- [x] Polyglot clients (Swift, Kotlin) via the same IR — `tythe swift`
-      and `tythe kotlin` emit working HTTP clients (typed args, typed
-      responses, typed `@raises` error unions, snake_case mapping,
-      URLSession / HttpURLConnection transport). Full per-language SSE
-      parsers for streaming endpoints remain a follow-up.
-- [x] Tracing/observability — OpenTelemetry ASGI middleware via
-      `tythe.otel.instrument(app)`
-- [x] `tythe deploy` thin wrapper for Fly / Render / Modal
+- [x] `@tythe/ts` — the framework-agnostic runtime the codegen
+      imports (zero deps, ~3 KB min+gz).
+- [x] `@tythe/react` — `useQuery` / `useMutation` / `useSubscription`
+      on TanStack Query.
+- [x] `@tythe/svelte` — Svelte 5 store bindings.
+- [x] `@tythe/solid` — SolidJS resource / signal bindings.
 
-## What we won't do _in core_ — meta-frameworks territory
+**Observability + tasks**
 
-These are real, useful patterns. They don't belong inside `tythe` because
-they carry opinion about how an app is structured. They belong in a
-meta-framework that sits on top of the IR and the runtime — possibly one
-we ship separately (working title: `tythe-kit`).
+- [x] `tythe.otel.instrument(app)` — opt-in OpenTelemetry middleware.
+- [x] `tythe.tasks.InMemoryBackend` + `TaskBackend` Protocol for
+      background jobs. Redis / SQS adapters intentionally separate.
+
+**Examples**
+
+- [x] `examples/nextjs-streaming` — typed SSE end-to-end in <50 lines.
+- [x] `examples/vite-react` — issue tracker exercising the full
+      type-safety surface, plus a side-by-side **vs FastAPI** page.
+- [x] `examples/sveltekit-counter` — `@tythe/svelte` end-to-end.
+
+## v0.2 — Hardening + stable surface
+
+Everything we'd want true before tagging 1.0. The shape of the surface
+is mostly there; v0.2 is about removing rough edges.
+
+- [ ] **Better validation errors.** Field-level paths + offending
+      value in the 422 body, both for msgspec and Pydantic.
+- [ ] **Generated-client diff in CI.** `tythe diff <old> <new>` flags
+      removed routes / renamed fields / narrowed types as breaking.
+- [ ] **`Task[T]` wired into runtime + codegen.** Annotation
+      `-> Task[T]` produces a typed task-id + polling/stream client.
+- [ ] **Streaming `Last-Event-Id` resumption.** SSE handlers can carry
+      ids; client passes them on reconnect. Production-grade streams
+      without a separate package.
+- [ ] **Per-language SSE parsers in polyglot codegen.** Swift /
+      Kotlin clients today surface streams as `URLRequest` / `String`;
+      give them `AsyncSequence` / `Flow` shapes.
+- [ ] **WebSocket bidi (`bidi[Send, Recv]`).** Handler-side channel
+      with codegen support on the TS side. Opt-in, SSE stays default.
+- [ ] **Pydantic deep parity.** `model_config` round-tripping,
+      discriminated unions, computed fields.
+- [ ] **Coverage > 90% across `tythe/*` source.**
+- [ ] **3rd-party benchmark pass.** Latency + cold-start vs.
+      FastAPI + Litestar on identical handlers.
+
+## v0.3+ — Further out
+
+Real, but unsized. Each lands when it earns its keep:
+
+- [ ] Backpressure / flow-control hooks for streams.
+- [ ] OpenAPI **import** — generate Tythe handler stubs from an
+      existing OpenAPI doc. Migration path for FastAPI codebases.
+- [ ] `tythe.observability` extra — Prometheus metrics + structured
+      logging recipe (on top of the existing OTel middleware).
+- [ ] Range requests / 206 Partial Content for `Bytes` responses.
+- [ ] `Subscription[T]` — `useSubscription` with typed acks (separate
+      from one-way SSE).
+
+## v1.0 — Stability commitment
+
+When we tag 1.0:
+
+- [ ] Wire format frozen. Backwards-compatible IR additions only;
+      no field removals / renames without a deprecation cycle.
+- [ ] Public API frozen for one minor release before breaking.
+- [ ] Semver applies to runtime + codegen output.
+- [ ] Documented LTS line.
+
+Until 1.0: pre-release. Pin exact versions.
+
+## Maintenance commitments (every release)
+
+Below the feature work, the steady stuff:
+
+- **Security.** CVEs in dependencies tracked weekly via Dependabot;
+  patches land in a same-day point release.
+- **Integrity of the IR / wire format.** Existing routes keep
+  generating equivalent clients across minor versions.
+- **Test gate.** Every PR runs ruff + mypy + pyright + pytest
+  (Python) and oxlint + oxfmt + tsc + vitest (TS) on macOS + Linux +
+  Windows. No regressions land.
+- **Examples kept runnable.** CI starts each example's server and
+  runs a smoke `curl` against the typed routes.
+
+## Meta-frameworks territory — deliberately outside core
+
+These are real, useful patterns. They don't belong inside `tythe`
+because they carry opinion about how an app is structured. They belong
+in a meta-framework that sits on top of the IR and the runtime —
+possibly one we ship separately (working title: `tythe-kit`).
 
 - **File-based routing.** Scan a `routes/` tree, register handlers by
   filename, hot-reload on change. Pure convenience layer over `App`.
@@ -90,15 +160,13 @@ reconsider — but the default is no.
 - **A `tythe.ai` module / LLM-specific types.** Tythe ships at the
   fundamental level: RPC, streaming, errors, cancellation. LLM tokens,
   tool calls, agent state, structured outputs — those are user code or
-  a separate plugin (`tythe-llm`, community-maintained). The core stays
-  application-agnostic.
+  a separate plugin (`tythe-llm`, community-maintained).
 - **WebSockets as the default streaming transport.** SSE is enough,
   simpler, and matches what every major server-push protocol
-  standardized on. WS is opt-in.
+  standardized on. WS is opt-in via `bidi[S, R]`.
 - **A monorepo template that bundles Next.js.** Bring your own
   frontend. Tythe writes a file into your `src/`. That's it.
-- **GraphQL support.** Different mental model. Scope balloon. Not doing
-  it.
+- **GraphQL support.** Different mental model. Scope balloon.
 - **A managed hosted service.** Tythe is a library. Modal / Fly /
   Render handle hosting just fine.
 
