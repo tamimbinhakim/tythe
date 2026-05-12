@@ -43,7 +43,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint:ts
-      - run: pnpm format:check
+      - run: pnpm format:check:ts
+      - run: pnpm format:check:docs
       - run: pnpm typecheck
 
   test-ts:

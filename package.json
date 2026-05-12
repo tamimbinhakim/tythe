@@ -28,7 +28,10 @@
     "format:ts": "oxfmt --ignore-path .oxfmtignore .",
     "format:py": "uv run --directory packages/tythe ruff format .",
     "format:docs": "prettier --write \"**/*.{md,json,yaml,yml}\"",
-    "format:check": "oxfmt --ignore-path .oxfmtignore --check . && uv run --directory packages/tythe ruff format --check . && prettier --check \"**/*.{md,json,yaml,yml}\"",
+    "format:check": "pnpm format:check:ts && pnpm format:check:py && pnpm format:check:docs",
+    "format:check:ts": "oxfmt --ignore-path .oxfmtignore --check .",
+    "format:check:py": "uv run --directory packages/tythe ruff format --check .",
+    "format:check:docs": "prettier --check \"**/*.{md,json,yaml,yml}\"",
     "clean": "pnpm -r run clean && rimraf node_modules .turbo",
     "prepare": "husky",
     "commitlint": "commitlint --edit"
