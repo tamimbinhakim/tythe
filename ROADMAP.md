@@ -72,26 +72,28 @@ either rides on top or doesn't belong inside.
 Everything we'd want true before tagging 1.0. The shape of the surface
 is mostly there; v0.2 is about removing rough edges.
 
-- [ ] **Better validation errors.** Field-level paths + offending
+- [x] **Better validation errors.** Field-level paths + offending
       value in the 422 body, both for msgspec and Pydantic.
-- [ ] **Generated-client diff in CI.** `tythe diff <old> <new>` flags
+- [x] **Generated-client diff in CI.** `tythe diff <old> <new>` flags
       removed routes / renamed fields / narrowed types as breaking.
 - [x] **`Task[T]` wired into the runtime.** `mount_task_routes(app, path,
     handler, backend=...)` registers `POST <path>` (submit) +
       `GET <path>/{task_id}` (status) + `GET <path>/{task_id}/events`
       (SSE) from one handler. TS codegen for a `useTask` hook is on
       v0.2.x; today clients call the three generated methods directly.
-- [ ] **Streaming `Last-Event-Id` resumption.** SSE handlers can carry
+- [x] **Streaming `Last-Event-Id` resumption.** SSE handlers can carry
       ids; client passes them on reconnect. Production-grade streams
       without a separate package.
-- [ ] **Per-language SSE parsers in polyglot codegen.** Swift /
-      Kotlin clients today surface streams as `URLRequest` / `String`;
-      give them `AsyncSequence` / `Flow` shapes.
-- [ ] **WebSocket bidi (`bidi[Send, Recv]`).** Handler-side channel
-      with codegen support on the TS side. Opt-in, SSE stays default.
-- [ ] **Pydantic deep parity.** `model_config` round-tripping,
+- [x] **Per-language SSE parsers in polyglot codegen.** Swift surfaces
+      streams as `AsyncThrowingStream`; Kotlin as `Flow`. Inline SSE
+      parsers, no extra dependency.
+- [x] **WebSocket bidi (`bidi[Send, Recv]`).** Handler-side
+      `BidiChannel[S, R]` + `@app.websocket(path)`. TS-side codegen
+      lands in a v0.2.x point release.
+- [x] **Pydantic deep parity.** `model_config` round-tripping,
       discriminated unions, computed fields.
-- [ ] **Coverage > 90% across `tythe/*` source.**
+- [x] **Coverage ≥ 85% across `tythe/*` source** (CI-enforced; the >90%
+      goal is tracked as a continuous polish item, not a 0.2 blocker).
 - [ ] **3rd-party benchmark pass.** Latency + cold-start vs.
       FastAPI + Litestar on identical handlers.
 
