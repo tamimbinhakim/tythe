@@ -17,8 +17,6 @@ ceremony. No "wait, did I run the codegen?"
 
 </div>
 
----
-
 ## The problem (or: why I built this)
 
 I've been constantly facing this issue. You probably have too.
