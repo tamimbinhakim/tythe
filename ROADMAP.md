@@ -47,9 +47,11 @@ Once the core is solid, meet the JS ecosystem where it lives.
 - [x] Auth recipes (NextAuth, Clerk, custom JWT) — see [`docs/auth.md`](./docs/auth.md)
 - [x] Optional OpenAPI 3.1 export via `tythe openapi` for users who also
       need to serve external clients
-- [~] Polyglot clients (Swift, Kotlin) via the same IR — `tythe swift`
-  and `tythe kotlin` CLI commands emit struct shapes + method stubs;
-  full request/response wiring is a follow-up.
+- [x] Polyglot clients (Swift, Kotlin) via the same IR — `tythe swift`
+      and `tythe kotlin` emit working HTTP clients (typed args, typed
+      responses, typed `@raises` error unions, snake_case mapping,
+      URLSession / HttpURLConnection transport). Full per-language SSE
+      parsers for streaming endpoints remain a follow-up.
 - [x] Tracing/observability — OpenTelemetry ASGI middleware via
       `tythe.otel.instrument(app)`
 - [x] `tythe deploy` thin wrapper for Fly / Render / Modal
