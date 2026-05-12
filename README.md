@@ -2,6 +2,8 @@
 
 # Tythe
 
+_pronounced **"tythe"** — rhymes with "scythe" (`/taɪð/`)_
+
 **A type-safe RPC bridge between Python and TypeScript.**
 
 The function signature is the contract. No DTOs. No OpenAPI codegen
