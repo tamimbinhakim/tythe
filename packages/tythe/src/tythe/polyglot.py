@@ -4,15 +4,21 @@ Both renderers emit a working HTTP client: typed args, typed responses,
 typed ``@raises`` error unions (as sealed enums / nested enums), and
 JSON encoding/decoding that matches Tythe's snake_case wire format.
 
+Streaming endpoints surface as language-native async streams:
+- Swift: ``AsyncThrowingStream<EventT, Error>`` backed by
+  ``URLSession.bytes(for:)`` with an inline SSE parser.
+- Kotlin: ``kotlinx.coroutines.flow.Flow<EventT>`` backed by
+  ``HttpURLConnection.inputStream`` and an inline SSE parser, dispatched
+  on ``Dispatchers.IO``.
+
+Both honor the SSE ``event: done`` / ``event: error`` conventions.
+
 Scope notes:
 
-- Streaming endpoints emit a method that returns ``URL``/``HttpUrl`` so
-  callers can wire SSE through their platform's preferred client. Full
-  AsyncIterable-style streaming would mean shipping an SSE parser per
-  language; out of scope for v0.1.
-- Swift uses URLSession + JSONEncoder/JSONDecoder.
-- Kotlin uses HttpURLConnection + kotlinx.serialization. No ktor / OkHttp
-  dependency — keep the generated file drop-in for any Gradle module.
+- Swift uses URLSession + JSONEncoder/JSONDecoder. No SwiftNIO dep.
+- Kotlin uses HttpURLConnection + kotlinx.serialization + kotlinx.coroutines.
+  No ktor / OkHttp dependency — keep the generated file drop-in for any
+  Gradle module that already depends on kotlinx.serialization.
 """
 
 from __future__ import annotations
@@ -153,6 +159,9 @@ def _swift_method(route: RouteIR) -> str:
     ret_ty = _swift_response_type(route)
 
     arg_list = ", ".join(f"{n}: {t}" for n, t in args)
+    if route.streams:
+        return _swift_stream_method(route, method, arg_list, ret_ty)
+
     head = f"    func {method}({arg_list}) async throws -> {ret_ty} {{\n"
 
     body: list[str] = [head]
@@ -262,10 +271,105 @@ def _swift_method(route: RouteIR) -> str:
 
 def _swift_response_type(route: RouteIR) -> str:
     if route.streams:
-        return "URLRequest"
+        event = _swift_type(route.event_schema) if route.event_schema else "Data"
+        return f"AsyncThrowingStream<{event}, Error>"
     if route.response is None:
         return "Void"
     return _swift_type(route.response)
+
+
+def _swift_stream_method(route: RouteIR, method: str, arg_list: str, ret_ty: str) -> str:
+    """Emit a streaming endpoint as an AsyncThrowingStream backed by URLSession.bytes."""
+    event_ty = _swift_type(route.event_schema) if route.event_schema else "Data"
+    out: list[str] = []
+    out.append(f"    func {method}({arg_list}) async throws -> {ret_ty} {{\n")
+    out.append(f'        var path = "{route.path}"\n')
+    for p in route.params:
+        if p.location == "path":
+            out.append(
+                f'        path = path.replacingOccurrences(of: "{{{p.alias}}}", '
+                f'with: "\\({_to_camel(p.name)})")\n'
+            )
+    out.append("        var components = URLComponents(\n")
+    out.append("            url: baseURL.appendingPathComponent(path),\n")
+    out.append("            resolvingAgainstBaseURL: false\n")
+    out.append("        )!\n")
+    queries = [p for p in route.params if p.location == "query"]
+    if queries:
+        out.append("        var items: [URLQueryItem] = []\n")
+        for p in queries:
+            out.append(
+                f'        items.append(URLQueryItem(name: "{p.alias}", '
+                f'value: "\\({_to_camel(p.name)})"))\n'
+            )
+        out.append("        components.queryItems = items\n")
+
+    out.append("        var req = URLRequest(url: components.url!)\n")
+    out.append(f'        req.httpMethod = "{route.method}"\n')
+    out.append('        req.setValue("text/event-stream", forHTTPHeaderField: "Accept")\n')
+    out.append("        for (k, v) in defaultHeaders { req.setValue(v, forHTTPHeaderField: k) }\n")
+    for p in route.params:
+        if p.location == "header":
+            out.append(
+                f'        req.setValue("\\({_to_camel(p.name)})", '
+                f'forHTTPHeaderField: "{p.alias}")\n'
+            )
+
+    out.append("        let (bytes, response) = try await session.bytes(for: req)\n")
+    out.append("        guard let http = response as? HTTPURLResponse,\n")
+    out.append("              (200..<300).contains(http.statusCode) else {\n")
+    out.append('            throw TytheRPCError.transport(NSError(domain: "tythe", code: 0))\n')
+    out.append("        }\n")
+    out.append(f"        return AsyncThrowingStream<{event_ty}, Error> {{ continuation in\n")
+    out.append("            Task {\n")
+    out.append("                do {\n")
+    out.append('                    var dataBuf = ""\n')
+    out.append("                    var eventName: String? = nil\n")
+    out.append("                    for try await line in bytes.lines {\n")
+    out.append("                        if line.isEmpty {\n")
+    out.append("                            if !dataBuf.isEmpty {\n")
+    out.append('                                if eventName == "done" {\n')
+    out.append("                                    continuation.finish(); return\n")
+    out.append("                                }\n")
+    out.append('                                if eventName == "error" {\n')
+    out.append(
+        "                                    let payload = dataBuf.data(using: .utf8) ?? Data()\n"
+    )
+    out.append("                                    continuation.finish(\n")
+    out.append("                                        throwing: TytheRPCError.http(\n")
+    out.append(
+        "                                            status: http.statusCode, body: payload\n"
+    )
+    out.append("                                        )\n")
+    out.append("                                    )\n")
+    out.append("                                    return\n")
+    out.append("                                }\n")
+    out.append("                                if let raw = dataBuf.data(using: .utf8) {\n")
+    out.append(
+        f"                                    let event = try TytheClient.decoder.decode({event_ty}.self, from: raw)\n"
+    )
+    out.append("                                    continuation.yield(event)\n")
+    out.append("                                }\n")
+    out.append("                            }\n")
+    out.append('                            dataBuf = ""\n')
+    out.append("                            eventName = nil\n")
+    out.append('                        } else if line.hasPrefix("event: ") {\n')
+    out.append('                            eventName = String(line.dropFirst("event: ".count))\n')
+    out.append('                        } else if line.hasPrefix("data: ") {\n')
+    out.append('                            if !dataBuf.isEmpty { dataBuf.append("\\n") }\n')
+    out.append(
+        '                            dataBuf.append(String(line.dropFirst("data: ".count)))\n'
+    )
+    out.append("                        }\n")
+    out.append("                    }\n")
+    out.append("                    continuation.finish()\n")
+    out.append("                } catch {\n")
+    out.append("                    continuation.finish(throwing: error)\n")
+    out.append("                }\n")
+    out.append("            }\n")
+    out.append("        }\n")
+    out.append("    }\n\n")
+    return "".join(out)
 
 
 def _swift_error_enum_name(method_name: str) -> str:
@@ -444,6 +548,10 @@ def _kotlin_error_sealed(method_name: str, variants: list[str]) -> str:
 def _kotlin_method(route: RouteIR) -> str:
     method = _kotlin_ident(_to_camel(route.name))
     arg_list = ", ".join(f"{_to_camel(p.name)}: {_kotlin_type(p.schema)}" for p in route.params)
+
+    if route.streams:
+        return _kotlin_stream_method(route, method, arg_list)
+
     return_ty = _kotlin_response_type(route)
     if route.raises:
         return_ty += f" /* may throw {_kotlin_error_enum_name(route.name)} */"
@@ -503,9 +611,10 @@ def _kotlin_method(route: RouteIR) -> str:
 
     out.append(f'        val resp = request("{route.method}", path, query, headers, body)\n')
 
-    if route.streams:
-        out.append("        return resp\n")
-    elif route.response is None:
+    # Streaming routes are handled by _kotlin_stream_method above; we never
+    # reach this branch through that path. Kept for completeness if a future
+    # change re-routes a streaming case through the unary builder.
+    if route.response is None:
         out.append("        return\n")
     elif route.raises:
         success_ty = _kotlin_type(route.response)
@@ -537,10 +646,89 @@ def _kotlin_method(route: RouteIR) -> str:
 
 def _kotlin_response_type(route: RouteIR) -> str:
     if route.streams:
-        return "String"  # raw SSE; caller parses
+        event = _kotlin_type(route.event_schema) if route.event_schema else "String"
+        return f"kotlinx.coroutines.flow.Flow<{event}>"
     if route.response is None:
         return "Unit"
     return _kotlin_type(route.response)
+
+
+def _kotlin_stream_method(route: RouteIR, method: str, arg_list: str) -> str:
+    """Emit a streaming endpoint as a Flow backed by HttpURLConnection + line reader."""
+    event = _kotlin_type(route.event_schema) if route.event_schema else "String"
+    out: list[str] = []
+    out.append(f"    fun {method}({arg_list}): kotlinx.coroutines.flow.Flow<{event}> =\n")
+    out.append("        kotlinx.coroutines.flow.flow {\n")
+    out.append(f'            var path = "{route.path}"\n')
+    for p in route.params:
+        if p.location == "path":
+            out.append(
+                f'            path = path.replace("{{{p.alias}}}", '
+                f"{_to_camel(p.name)}.toString())\n"
+            )
+    queries = [p for p in route.params if p.location == "query"]
+    if queries:
+        out.append("            val qs = listOf(\n")
+        for p in queries:
+            out.append(f'                "{p.alias}" to {_to_camel(p.name)}.toString(),\n')
+        out.append('            ).joinToString("&") { (k, v) ->\n')
+        out.append(
+            '                URLEncoder.encode(k, "UTF-8") + "=" + URLEncoder.encode(v, "UTF-8")\n'
+        )
+        out.append("            }\n")
+        out.append(
+            '            val url = URL(baseUrl.trimEnd(\'/\') + path + (if (qs.isEmpty()) "" else "?$qs"))\n'
+        )
+    else:
+        out.append("            val url = URL(baseUrl.trimEnd('/') + path)\n")
+
+    out.append("            val conn = (url.openConnection() as HttpURLConnection).apply {\n")
+    out.append(f'                requestMethod = "{route.method}"\n')
+    out.append('                setRequestProperty("Accept", "text/event-stream")\n')
+    out.append("                for ((k, v) in defaultHeaders) setRequestProperty(k, v)\n")
+    for p in route.params:
+        if p.location == "header":
+            out.append(
+                f'                setRequestProperty("{p.alias}", {_to_camel(p.name)}.toString())\n'
+            )
+    out.append("            }\n")
+    out.append("            val status = conn.responseCode\n")
+    out.append("            if (status !in 200..299) {\n")
+    out.append(
+        '                val errBody = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""\n'
+    )
+    out.append("                throw TytheRPCError(status, errBody)\n")
+    out.append("            }\n")
+    out.append("            conn.inputStream.bufferedReader().use { reader ->\n")
+    out.append("                val dataBuf = StringBuilder()\n")
+    out.append("                var eventName: String? = null\n")
+    out.append("                for (line in reader.lineSequence()) {\n")
+    out.append("                    if (line.isEmpty()) {\n")
+    out.append("                        if (dataBuf.isNotEmpty()) {\n")
+    out.append("                            when (eventName) {\n")
+    out.append('                                "done" -> return@flow\n')
+    out.append(
+        '                                "error" -> throw TytheRPCError(status, dataBuf.toString())\n'
+    )
+    out.append("                                else -> emit(\n")
+    out.append(
+        f"                                    tytheJson.decodeFromString<{event}>(dataBuf.toString())\n"
+    )
+    out.append("                                )\n")
+    out.append("                            }\n")
+    out.append("                        }\n")
+    out.append("                        dataBuf.clear()\n")
+    out.append("                        eventName = null\n")
+    out.append('                    } else if (line.startsWith("event: ")) {\n')
+    out.append('                        eventName = line.removePrefix("event: ")\n')
+    out.append('                    } else if (line.startsWith("data: ")) {\n')
+    out.append("                        if (dataBuf.isNotEmpty()) dataBuf.append('\\n')\n")
+    out.append('                        dataBuf.append(line.removePrefix("data: "))\n')
+    out.append("                    }\n")
+    out.append("                }\n")
+    out.append("            }\n")
+    out.append("        }.flowOn(kotlinx.coroutines.Dispatchers.IO)\n\n")
+    return "".join(out)
 
 
 def _kotlin_error_enum_name(method_name: str) -> str:

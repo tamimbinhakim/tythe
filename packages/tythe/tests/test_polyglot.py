@@ -109,10 +109,14 @@ def test_swift_emits_error_enum_for_raises() -> None:
     assert "case forbidden(Forbidden)" in out
 
 
-def test_swift_streaming_method_returns_urlrequest() -> None:
+def test_swift_streaming_method_returns_async_throwing_stream() -> None:
     out = render_swift(_build_full_ir())
-    # Stream endpoint surfaces a URLRequest so caller can wire SSE.
-    assert "func feed() async throws -> URLRequest" in out
+    # Stream endpoint surfaces an AsyncThrowingStream of the event type.
+    assert "func feed() async throws -> AsyncThrowingStream<Tick, Error>" in out
+    assert "session.bytes(for: req)" in out
+    assert 'eventName == "done"' in out
+    assert 'eventName == "error"' in out
+    assert "TytheClient.decoder.decode(Tick.self" in out
 
 
 # ----------------------- Kotlin ----------------------- #
@@ -156,7 +160,11 @@ def test_kotlin_emits_sealed_class_for_raises() -> None:
     assert "IsForbidden" in out
 
 
-def test_kotlin_streaming_returns_string() -> None:
+def test_kotlin_streaming_returns_flow() -> None:
     out = render_kotlin(_build_full_ir())
-    # Stream endpoint returns the raw SSE text; consumers wire their own parser.
-    assert "suspend fun feed(): String" in out
+    # Stream endpoint returns a Flow<EventT> backed by an SSE parser.
+    assert "fun feed(): kotlinx.coroutines.flow.Flow<Tick>" in out
+    assert "flow {" in out
+    assert "tytheJson.decodeFromString<Tick>" in out
+    assert "event: text/event-stream" in out or 'Accept", "text/event-stream' in out
+    assert "Dispatchers.IO" in out
