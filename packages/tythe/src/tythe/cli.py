@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import signal
 import subprocess
 import sys
+from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
 
@@ -30,6 +32,7 @@ from watchfiles import awatch  # pyright: ignore[reportUnknownVariableType]
 from tythe import __version__
 from tythe.app import App
 from tythe.codegen import write as write_client
+from tythe.diff import diff_ir, format_github, format_human, format_json, load_ir
 from tythe.ir import build_ir
 from tythe.openapi import write as write_openapi
 from tythe.polyglot import write_kotlin, write_swift
@@ -222,6 +225,48 @@ def kotlin(
     ir = build_ir(app)
     write_kotlin(ir, out, package=package)
     rprint(f"[bold green]wrote[/bold green] {out} ({len(ir.routes)} routes)")
+
+
+@app_cli.command()
+def ir(
+    target: Annotated[str, typer.Argument(help="module:attr of your tythe.App")],
+    out: Annotated[Path, typer.Option(help="Where to write the IR snapshot")] = Path(
+        "tythe-ir.json",
+    ),
+) -> None:
+    """Emit the route IR as a JSON snapshot for diffing or external tooling."""
+    app = _load_app(target)
+    ir_value = build_ir(app)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(asdict(ir_value), indent=2), encoding="utf-8")
+    rprint(f"[bold green]wrote[/bold green] {out} ({len(ir_value.routes)} routes)")
+
+
+@app_cli.command()
+def diff(
+    old: Annotated[Path, typer.Argument(help="Old IR snapshot (tythe-ir.json)")],
+    new: Annotated[Path, typer.Argument(help="New IR snapshot (tythe-ir.json)")],
+    fmt: Annotated[
+        str, typer.Option("--format", help="Output format: human | json | github")
+    ] = "human",
+) -> None:
+    """Diff two IR snapshots and exit non-zero on breaking changes.
+
+    Drop this into CI to surface breaking changes on every PR:
+
+        tythe ir server.app:app --out new-ir.json
+        tythe diff main-ir.json new-ir.json --format github
+    """
+    result = diff_ir(load_ir(old), load_ir(new))
+    if fmt == "json":
+        rprint(format_json(result))
+    elif fmt == "github":
+        # GitHub annotation commands go to stdout exactly as-is.
+        print(format_github(result))
+    else:
+        rprint(format_human(result))
+    if result.breaking:
+        raise typer.Exit(code=1)
 
 
 @app_cli.command()

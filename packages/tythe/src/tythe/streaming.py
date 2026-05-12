@@ -59,12 +59,17 @@ def encode_frame(value: object) -> bytes:
     additionally emit ``id:`` and ``retry:`` lines per the SSE spec.
     """
     if isinstance(value, SsePayload):
+        # ``SsePayload`` is Generic[T]; widening to ``Any`` here avoids
+        # pyright-strict's "Unknown type parameter" propagation downstream.
+        from typing import cast as _cast
+
+        payload = _cast("SsePayload[Any]", value)  # type: ignore[redundant-cast]
         parts: list[bytes] = []
-        if value.id is not None:
-            parts.append(b"id: " + value.id.encode("utf-8") + b"\n")
-        if value.retry_ms is not None:
-            parts.append(b"retry: " + str(value.retry_ms).encode("ascii") + b"\n")
-        parts.append(b"data: " + _encoder.encode(value.data) + b"\n\n")
+        if payload.id is not None:
+            parts.append(b"id: " + payload.id.encode("utf-8") + b"\n")
+        if payload.retry_ms is not None:
+            parts.append(b"retry: " + str(payload.retry_ms).encode("ascii") + b"\n")
+        parts.append(b"data: " + _encoder.encode(payload.data) + b"\n\n")
         return b"".join(parts)
     return b"data: " + _encoder.encode(value) + b"\n\n"
 
