@@ -14,6 +14,14 @@ bottom, but if you're in a hurry:
 - **[Auth recipes](./auth.md)** — NextAuth / Clerk / JWT / session-cookie
   cookbook on top of `Depends(...)`.
 
+For maintainers and consumers wanting commitments:
+
+- **[IR stability](./ir-stability.md)** — what's frozen in the IR and what
+  isn't, plus the deprecation cycle.
+- **[Versioning](./semver.md)** — how Tythe applies semver, what counts as
+  a breaking change, and how CI enforces it.
+- **[LTS](./lts.md)** — support windows, backport policy, EOL rules.
+
 If something in these docs is wrong, confusing, or just annoying, please
 open a doc issue using the template — that's the fastest way to make this
 better for the next person.
