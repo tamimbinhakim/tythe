@@ -62,6 +62,15 @@ class HandlerPlan:
     raises: tuple[type[Exception], ...]
     body_embed: bool
     file_params: list[ParamSpec]
+    # Fast-path body decoder: set only when the route has exactly one body
+    # param of a msgspec-native type (Struct / dataclass / TypedDict / scalar).
+    # Lets us go raw bytes → typed value in one C call instead of bytes →
+    # untyped dict → msgspec.convert.
+    body_decoder: Any = None  # msgspec.json.Decoder[Any] | None
+    body_spec: ParamSpec | None = None  # the single body param when body_decoder is set
+    # Skip the pydantic detection branch on the response encoder when no
+    # pydantic models appear in the route's type graph.
+    pydantic_in_use: bool = False
 
 
 def build_plan(handler: Callable[..., Any], path_template: str) -> HandlerPlan:
@@ -82,17 +91,55 @@ def build_plan(handler: Callable[..., Any], path_template: str) -> HandlerPlan:
         for s in body_specs:
             s.embed = True
 
+    return_annotation = hints.get("return", inspect.Signature.empty)
+
+    # Decide *whether* the fast-path body decoder is applicable but defer the
+    # ``msgspec.json.Decoder(py_type)`` construction itself — that call does
+    # meaningful upfront work (codegen), so we lazily build it on the route's
+    # first hit. ``app._build()`` iterates every route, so eager construction
+    # would charge cold-start for routes that may never be called.
+    fast_body_spec: ParamSpec | None = None
+    if (
+        len(body_specs) == 1
+        and not body_embed
+        and body_specs[0].py_type is not bytes
+        and not body_specs[0].is_form
+        and not is_pydantic_model(body_specs[0].py_type)
+    ):
+        fast_body_spec = body_specs[0]
+
+    pydantic_in_use = _route_uses_pydantic(specs, return_annotation)
+
     return HandlerPlan(
         params=specs,
-        return_annotation=hints.get("return", inspect.Signature.empty),
-        streams=is_stream_annotation(hints.get("return")),
-        event_type=stream_event_type(hints.get("return"))
-        if is_stream_annotation(hints.get("return"))
+        return_annotation=return_annotation,
+        streams=is_stream_annotation(return_annotation),
+        event_type=stream_event_type(return_annotation)
+        if is_stream_annotation(return_annotation)
         else None,
         raises=get_declared_raises(handler),
         body_embed=body_embed,
         file_params=[s for s in specs if s.location == "file"],
+        body_decoder=None,
+        body_spec=fast_body_spec,
+        pydantic_in_use=pydantic_in_use,
     )
+
+
+def _route_uses_pydantic(specs: list[ParamSpec], return_annotation: Any) -> bool:
+    """``True`` iff any param or the return type touches a Pydantic model.
+
+    Used to skip the pydantic-detection branch in the response encoder hot
+    path for the (overwhelmingly common) msgspec-only routes.
+    """
+    if is_pydantic_model(return_annotation):
+        return True
+    # Stream return types: peel ``stream[T]`` to inspect T.
+    if is_stream_annotation(return_annotation):
+        inner = stream_event_type(return_annotation)
+        if is_pydantic_model(inner):
+            return True
+    return any(is_pydantic_model(s.py_type) for s in specs)
 
 
 def _resolve_param(param: inspect.Parameter, annotation: Any, path_params: set[str]) -> ParamSpec:
@@ -430,6 +477,14 @@ def _encode_json(value: Any) -> bytes:
     return _json_encoder.encode(to_jsonable(value))
 
 
+def _encode_json_fast(value: Any) -> bytes:
+    """Encoder hot-path for routes whose type graph touches no Pydantic models.
+
+    Skips the per-call ``to_jsonable`` dispatch — pure msgspec encode.
+    """
+    return _json_encoder.encode(value)
+
+
 def _ctx_background(ctx: Context | None) -> BackgroundTask | None:
     """Bundle a Context's after-callbacks into a Starlette BackgroundTask."""
     if ctx is None or not ctx.after_callbacks:
@@ -486,7 +541,8 @@ def _build_response(result: Any, plan: HandlerPlan, ctx: Context | None) -> Resp
         _apply_ctx_cookies(ctx, resp)
         return resp
 
-    payload = _encode_json({"ok": True, "data": result}) if plan.raises else _encode_json(result)
+    encode = _encode_json if plan.pydantic_in_use else _encode_json_fast
+    payload = encode({"ok": True, "data": result}) if plan.raises else encode(result)
     resp = Response(
         content=payload,
         media_type="application/json",
@@ -578,22 +634,66 @@ class RouteRunner:
         body_specs = [p for p in self.plan.params if p.location == "body"]
         raw_body_spec = next((s for s in body_specs if s.py_type is bytes), None)
         form_body_spec = next((s for s in body_specs if s.is_form), None)
-        if raw_body_spec is not None:
-            body_cache = await request.body()
-        elif form_body_spec is not None:
-            # urlencoded + multipart both come through request.form().
-            form_cache = await request.form()
-            body_cache = {k: form_cache[k] for k in form_cache}
-        elif body_specs:
-            body_cache = await _read_json_body(request, embed=self.plan.body_embed)
+        # Fast path: single msgspec-friendly body param → decode bytes directly
+        # into the typed value via a cached ``msgspec.json.Decoder`` and bind to
+        # the handler param without going through an intermediate dict. The
+        # decoder is built on first hit (not in ``build_plan``) so cold-start
+        # only pays for routes the user actually exercises.
+        fast_body_value: Any = _MISSING
+        body_spec = self.plan.body_spec
+        if body_spec is not None and raw_body_spec is None and form_body_spec is None:
+            decoder = self.plan.body_decoder
+            if decoder is None:
+                try:
+                    decoder = msgspec.json.Decoder(body_spec.py_type)
+                    self.plan.body_decoder = decoder
+                except (TypeError, msgspec.ValidationError):
+                    # Annotation msgspec can't compile a typed decoder for —
+                    # disable the fast path for this route permanently and
+                    # drop through to the generic JSON-dict decode.
+                    self.plan.body_spec = None
+                    body_spec = None
+            if body_spec is not None and decoder is not None:
+                raw = await request.body()
+                if raw:
+                    try:
+                        fast_body_value = decoder.decode(raw)
+                    except msgspec.ValidationError as exc:
+                        field, offending = _msgspec_field_and_value(None, str(exc), body_spec.alias)
+                        raise ValidationError(
+                            str(exc),
+                            location="body",
+                            field=field,
+                            value=offending,
+                        ) from exc
+                elif not body_spec.required:
+                    fast_body_value = body_spec.default
+                else:
+                    raise _missing(body_spec)
+        if fast_body_value is _MISSING and body_cache is None:
+            if raw_body_spec is not None:
+                body_cache = await request.body()
+            elif form_body_spec is not None:
+                # urlencoded + multipart both come through request.form().
+                form_cache = await request.form()
+                body_cache = {k: form_cache[k] for k in form_cache}
+            elif body_specs:
+                body_cache = await _read_json_body(request, embed=self.plan.body_embed)
         if self.plan.file_params and form_cache is None:
             form_cache = await request.form()
 
         teardown: list[TeardownFn] = []
         resolver = _DepResolver(request)
+        fast_spec_name = self.plan.body_spec.name if self.plan.body_spec is not None else None
         for spec in self.plan.params:
             value: Any
-            if spec.dependency is not None:
+            if (
+                fast_spec_name is not None
+                and spec.name == fast_spec_name
+                and fast_body_value is not _MISSING
+            ):
+                value = fast_body_value
+            elif spec.dependency is not None:
                 value, td = await resolver.resolve(spec.dependency)
                 if td is not None:
                     teardown.append(td)

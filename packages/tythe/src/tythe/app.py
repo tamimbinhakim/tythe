@@ -23,10 +23,12 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Route as StarletteRoute
 from starlette.routing import WebSocketRoute as StarletteWebSocketRoute
-from starlette.websockets import WebSocket
 
-from tythe.bidi import BidiChannel, bidi_types, is_bidi_annotation
 from tythe.runtime import HandlerPlan, RouteRunner, build_plan
+
+# ``tythe.bidi`` is imported lazily inside the ``websocket`` decorator and the
+# build path — it drags ``starlette.websockets`` which costs ~5 ms at import
+# time and is irrelevant for the dominant HTTP-only case.
 
 HttpMethod = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
 
@@ -174,6 +176,8 @@ def _endpoint_for(runner: RouteRunner) -> Callable[[Request], Awaitable[Response
 
 def _extract_bidi_types(handler: Handler) -> tuple[Any, Any]:
     """Pull ``S`` and ``R`` out of the handler's ``BidiChannel[S, R]`` param."""
+    from tythe.bidi import bidi_types, is_bidi_annotation
+
     sig = inspect.signature(handler)
     localns: dict[str, Any] | None = getattr(handler, "__tythe_localns__", None)
     hints = typing.get_type_hints(handler, localns=localns, include_extras=True)
@@ -188,9 +192,13 @@ def _extract_bidi_types(handler: Handler) -> tuple[Any, Any]:
     raise TypeError(msg)
 
 
-def _ws_endpoint_for(route: WebSocketRoute) -> Callable[[WebSocket], Awaitable[None]]:
-    async def endpoint(websocket: WebSocket) -> None:
-        channel: BidiChannel[Any, Any] = BidiChannel(
+def _ws_endpoint_for(
+    route: WebSocketRoute,
+) -> Callable[[Any], Awaitable[None]]:
+    from tythe.bidi import BidiChannel
+
+    async def endpoint(websocket: Any) -> None:
+        channel: BidiChannel[Any, Any] = BidiChannel(  # pyright: ignore[reportUnknownVariableType]
             websocket,
             send_type=route.send_type,
             recv_type=route.recv_type,
