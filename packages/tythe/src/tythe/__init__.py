@@ -7,6 +7,7 @@ https://github.com/tamimbinhakim/tythe for full docs.
 from __future__ import annotations
 
 from tythe.app import App
+from tythe.bidi import BidiChannel, bidi
 from tythe.context import Context, Depends, after
 from tythe.errors import raises
 from tythe.params import Form
@@ -20,6 +21,7 @@ Bytes = bytes
 
 __all__ = [
     "App",
+    "BidiChannel",
     "Bytes",
     "Context",
     "Depends",
@@ -29,6 +31,7 @@ __all__ = [
     "TaskBackend",
     "TaskState",
     "after",
+    "bidi",
     "raises",
     "stream",
 ]
