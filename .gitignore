@@ -81,7 +81,11 @@ benchmarks/results/
 benchmarks/uv.lock
 
 # ---- SvelteKit generated ----
-.svelte-kit/
+# Everything is regenerated on ``pnpm dev`` / ``svelte-kit sync``. We commit
+# just the tsconfig.json so editor TypeScript diagnostics don't break on a
+# fresh clone before the first sync has run.
+.svelte-kit/*
+!.svelte-kit/tsconfig.json
 
 # ---- Env / secrets ----
 .env
