@@ -59,6 +59,8 @@ class RouteIR:
     streams: bool
     event_schema: dict[str, Any] | None
     raises: list[ErrorIR]
+    binary_body: bool = False  # body is raw bytes (skip JSON envelope)
+    binary_response: bool = False  # response is raw bytes (decode as Blob on TS side)
 
 
 @dataclass(slots=True)
@@ -88,7 +90,8 @@ def build_ir(app: App) -> AppIR:
             if p.location is None:  # Context / Depends — not on the wire
                 continue
             slots.append(("param", r_idx, p))
-            if p.location == "file":
+            if p.location == "file" or p.py_type is bytes:
+                # File uploads + raw-byte body slots use a fixed binary schema.
                 types_for_extraction.append(_Skip)
             else:
                 types_for_extraction.append(
@@ -99,7 +102,7 @@ def build_ir(app: App) -> AppIR:
         slots.append(("response", r_idx, None))
         if plan.streams and plan.event_type is not None:
             types_for_extraction.append(plan.event_type)
-        elif ret is None or ret is type(None) or ret is inspect.Signature.empty:
+        elif ret is None or ret is type(None) or ret is inspect.Signature.empty or ret is bytes:
             types_for_extraction.append(_Skip)
         else:
             types_for_extraction.append(ret)
@@ -149,6 +152,8 @@ def build_ir(app: App) -> AppIR:
         response_schema: dict[str, Any] | None = None
         event_schema: dict[str, Any] | None = None
         raises_ir: list[ErrorIR] = []
+        binary_body = False
+        binary_response = plan.return_annotation is bytes
 
         for slot_idx, (kind, slot_r_idx, payload) in enumerate(slots):
             if slot_r_idx != r_idx:
@@ -157,11 +162,14 @@ def build_ir(app: App) -> AppIR:
             if kind == "param":
                 p = payload
                 assert p.location is not None
+                if p.py_type is bytes and p.location == "body":
+                    binary_body = True
+                    slot_schema = _binary_schema()
                 params_ir.append(
                     ParamIR(
                         name=p.name,
                         alias=p.alias,
-                        schema=slot_schema if slot_schema is not None else _file_schema(),
+                        schema=slot_schema if slot_schema is not None else _binary_schema(),
                         location=p.location,
                         required=p.required,
                         embed=p.embed,
@@ -170,6 +178,8 @@ def build_ir(app: App) -> AppIR:
             elif kind == "response":
                 if plan.streams:
                     event_schema = slot_schema
+                elif binary_response:
+                    response_schema = _binary_schema()
                 else:
                     response_schema = slot_schema
             elif kind == "raises":
@@ -187,13 +197,16 @@ def build_ir(app: App) -> AppIR:
                 streams=plan.streams,
                 event_schema=event_schema,
                 raises=raises_ir,
+                binary_body=binary_body,
+                binary_response=binary_response,
             ),
         )
 
     return AppIR(routes=routes_ir, components=components)
 
 
-def _file_schema() -> dict[str, Any]:
+def _binary_schema() -> dict[str, Any]:
+    """Wire shape for raw bytes — File uploads + ``bytes`` body/response slots."""
     return {"type": "string", "format": "binary"}
 
 

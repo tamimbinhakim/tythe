@@ -36,7 +36,7 @@ function buildRequest(
 
   const bodyEmbed: Record<string, unknown> = {};
   let bodyWhole: unknown;
-  let bodyMode: "none" | "json" | "multipart" = "none";
+  let bodyMode: "none" | "json" | "multipart" | "binary" = "none";
   let multipart: FormData | null = null;
 
   for (const p of route.params ?? []) {
@@ -68,9 +68,17 @@ function buildRequest(
         break;
       }
       case "body": {
-        if (p.embed) bodyEmbed[p.alias] = v;
-        else bodyWhole = v;
-        if (bodyMode === "none") bodyMode = "json";
+        if (route.binaryBody) {
+          // Raw-bytes body — pass the value through unchanged.
+          bodyWhole = v;
+          bodyMode = "binary";
+        } else if (p.embed) {
+          bodyEmbed[p.alias] = v;
+          if (bodyMode === "none") bodyMode = "json";
+        } else {
+          bodyWhole = v;
+          if (bodyMode === "none") bodyMode = "json";
+        }
         break;
       }
     }
@@ -86,6 +94,9 @@ function buildRequest(
     // Let fetch set the multipart boundary; we must NOT pin content-type.
     delete headers["content-type"];
     body = multipart;
+  } else if (bodyMode === "binary") {
+    headers["content-type"] ??= "application/octet-stream";
+    body = bodyWhole as BodyInit;
   }
 
   const qs = query.toString();
@@ -103,6 +114,11 @@ async function unaryCall(
 ): Promise<unknown> {
   const res = await fetchImpl(url, init);
   if (!res.ok) throw await httpError(res);
+
+  if (route.binaryResponse) {
+    // Server marked the route as raw bytes — hand back a Blob, skip JSON parsing.
+    return await res.blob();
+  }
 
   const ct = res.headers.get("content-type") ?? "";
   if (ct.includes("application/json")) {

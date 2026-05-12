@@ -22,12 +22,13 @@ from dataclasses import dataclass
 from typing import Annotated, Any, cast, get_args, get_origin
 
 import msgspec
+from starlette.background import BackgroundTask
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from tythe._pydantic import is_pydantic_model, to_jsonable
 from tythe._pydantic import validate as pydantic_validate
-from tythe.context import Context, Dependency
+from tythe.context import Context, Dependency, current_context_var, run_after_callbacks
 from tythe.errors import exception_to_payload, get_declared_raises
 from tythe.params import Body, Marker, ParamLocation, location_of
 from tythe.streaming import encode_done, encode_frame, is_stream_annotation, stream_event_type
@@ -159,8 +160,8 @@ def _resolve_param(param: inspect.Parameter, annotation: Any, path_params: set[s
 
 
 def _is_structural(t: Any) -> bool:
-    """``True`` for Struct / dataclass / TypedDict / Pydantic BaseModel."""
-    return _is_struct_class(t) or _has_struct_attrs(t) or is_pydantic_model(t)
+    """``True`` for Struct / dataclass / TypedDict / Pydantic BaseModel / ``bytes``."""
+    return t is bytes or _is_struct_class(t) or _has_struct_attrs(t) or is_pydantic_model(t)
 
 
 def _is_struct_class(t: Any) -> bool:
@@ -225,6 +226,9 @@ async def _read_value(
 
 def _convert_body(value: Any, py_type: Any) -> Any:
     """Pydantic BaseModel → ``model_validate``; everything else → msgspec.convert."""
+    if py_type is bytes:
+        # Raw-body params skip the JSON decode; runtime feeds bytes directly.
+        return value
     if is_pydantic_model(py_type):
         return pydantic_validate(py_type, value)
     return msgspec.convert(value, type=py_type, strict=False)
@@ -265,6 +269,63 @@ def _encode_json(value: Any) -> bytes:
     return _json_encoder.encode(to_jsonable(value))
 
 
+def _ctx_background(ctx: Context | None) -> BackgroundTask | None:
+    """Bundle a Context's after-callbacks into a Starlette BackgroundTask."""
+    if ctx is None or not ctx.after_callbacks:
+        return None
+    callbacks = list(ctx.after_callbacks)
+    return BackgroundTask(run_after_callbacks, callbacks)
+
+
+def _apply_ctx_headers(ctx: Context | None, headers: dict[str, str]) -> dict[str, str]:
+    if ctx is None:
+        return headers
+    merged: dict[str, str] = {**headers, **ctx.response_headers}
+    return merged
+
+
+def _ctx_status(ctx: Context | None, default: int) -> int:
+    return default if ctx is None or ctx.response_status is None else ctx.response_status
+
+
+def _build_response(result: Any, plan: HandlerPlan, ctx: Context | None) -> Response:
+    headers = _apply_ctx_headers(ctx, {})
+    background = _ctx_background(ctx)
+    status = _ctx_status(ctx, 200)
+
+    # Raw bytes response — skip the JSON envelope, send octet-stream by default.
+    if plan.return_annotation is bytes and isinstance(result, (bytes, bytearray)):
+        media = headers.pop("content-type", None) or "application/octet-stream"
+        return Response(
+            content=bytes(result),
+            media_type=media,
+            headers=headers,
+            background=background,
+            status_code=status,
+        )
+
+    payload = _encode_json({"ok": True, "data": result}) if plan.raises else _encode_json(result)
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers=headers,
+        background=background,
+        status_code=status,
+    )
+
+
+def _build_error_response(exc: Exception, ctx: Context | None) -> Response:
+    headers = _apply_ctx_headers(ctx, {})
+    background = _ctx_background(ctx)
+    return Response(
+        content=_encode_json({"ok": False, "error": exception_to_payload(exc)}),
+        media_type="application/json",
+        headers=headers,
+        background=background,
+        status_code=_ctx_status(ctx, 200),
+    )
+
+
 @dataclass(slots=True)
 class RouteRunner:
     handler: Callable[..., Any]
@@ -272,8 +333,16 @@ class RouteRunner:
 
     async def handle(self, request: Request) -> Response:
         teardown: list[TeardownFn] = []
+        ctx_token = None
+        ctx_for_response: Context | None = None
         try:
-            kwargs, teardown = await self._gather_kwargs(request)
+            kwargs, teardown, ctx_for_response = await self._gather_kwargs(request)
+            # Free-function ``after()`` calls look up the current Context via
+            # this contextvar. If the handler didn't request a Context param,
+            # we synthesize one so ``after()`` still works.
+            if ctx_for_response is None:
+                ctx_for_response = Context(request=request)
+            ctx_token = current_context_var.set(ctx_for_response)
 
             if self.plan.streams:
                 return StreamingResponse(
@@ -286,13 +355,8 @@ class RouteRunner:
             if inspect.isawaitable(result):
                 result = await result
 
-            payload = (
-                _encode_json({"ok": True, "data": result})
-                if self.plan.raises
-                else _encode_json(result)
-            )
             await _run_teardown(teardown)
-            return Response(content=payload, media_type="application/json")
+            return _build_response(result, self.plan, ctx_for_response)
         except ValidationError as exc:
             await _run_teardown(teardown)
             return JSONResponse({"detail": str(exc), "location": exc.location}, status_code=422)
@@ -301,22 +365,27 @@ class RouteRunner:
             # raised inside the handler body or inside a ``Depends(...)`` provider.
             if isinstance(exc, self.plan.raises):
                 await _run_teardown(teardown)
-                return Response(
-                    content=_encode_json({"ok": False, "error": exception_to_payload(exc)}),
-                    media_type="application/json",
-                )
+                return _build_error_response(exc, ctx_for_response)
             await _run_teardown(teardown)
             raise
+        finally:
+            if ctx_token is not None:
+                current_context_var.reset(ctx_token)
 
     async def _gather_kwargs(
         self,
         request: Request,
-    ) -> tuple[dict[str, Any], list[TeardownFn]]:
+    ) -> tuple[dict[str, Any], list[TeardownFn], Context | None]:
         kwargs: dict[str, Any] = {}
-        body_cache: dict[str, Any] | None = None
+        body_cache: dict[str, Any] | bytes | None = None
         form_cache: Mapping[str, Any] | None = None
+        ctx_value: Context | None = None
 
-        if any(p.location == "body" for p in self.plan.params):
+        body_specs = [p for p in self.plan.params if p.location == "body"]
+        raw_body_spec = next((s for s in body_specs if s.py_type is bytes), None)
+        if raw_body_spec is not None:
+            body_cache = await request.body()
+        elif body_specs:
             body_cache = await _read_json_body(request, embed=self.plan.body_embed)
         if self.plan.file_params:
             form_cache = await request.form()
@@ -329,10 +398,20 @@ class RouteRunner:
                 value, td = await resolver.resolve(spec.dependency)
                 if td is not None:
                     teardown.append(td)
+            elif spec.is_context:
+                ctx_value = Context(request=request)
+                value = ctx_value
+            elif spec.location == "body" and spec.py_type is bytes:
+                value = body_cache  # raw bytes
             else:
-                value = await _read_value(spec, request, body_cache, form_cache)
+                value = await _read_value(
+                    spec,
+                    request,
+                    body_cache if isinstance(body_cache, dict) else None,
+                    form_cache,
+                )
             kwargs[spec.name] = value
-        return kwargs, teardown
+        return kwargs, teardown, ctx_value
 
     async def _stream(
         self,

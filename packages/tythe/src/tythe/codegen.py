@@ -342,6 +342,10 @@ def _render_route_descriptor(route: RouteIR) -> str:
         parts.append("streams: true")
     if route.raises:
         parts.append("result: true")
+    if route.binary_body:
+        parts.append("binaryBody: true")
+    if route.binary_response:
+        parts.append("binaryResponse: true")
     return "{ " + ", ".join(parts) + " }"
 
 

@@ -290,10 +290,10 @@ def _swift_type(schema: Any) -> str:
     t = s.get("type")
     if isinstance(t, list):
         # nullable: ["string", "null"]
-        non_null = [x for x in cast("list[Any]", t) if x != "null"]
-        if non_null:
+        non_null_t = [x for x in cast("list[Any]", t) if x != "null"]  # type: ignore[redundant-cast]
+        if non_null_t:
             inner = _swift_type(
-                {"type": non_null[0], **{k: v for k, v in s.items() if k != "type"}}
+                {"type": non_null_t[0], **{k: v for k, v in s.items() if k != "type"}}
             )
             return f"{inner}?"
         return "AnyCodable?"
@@ -310,9 +310,9 @@ def _swift_type(schema: Any) -> str:
         return f"[{_swift_type(items)}]"
     if "anyOf" in s or "oneOf" in s:
         variants = cast("list[Any]", s.get("anyOf") or s.get("oneOf"))
-        non_null: list[Any] = [v for v in variants if not _is_null_schema(v)]
-        if len(non_null) == 1:
-            return f"{_swift_type(non_null[0])}?"
+        non_null_v: list[Any] = [v for v in variants if not _is_null_schema(v)]
+        if len(non_null_v) == 1:
+            return f"{_swift_type(non_null_v[0])}?"
         return "AnyCodable"
     return "AnyCodable"
 
@@ -556,10 +556,10 @@ def _kotlin_type(schema: Any) -> str:
         return _kotlin_ident(ref)
     t = s.get("type")
     if isinstance(t, list):
-        non_null = [x for x in cast("list[Any]", t) if x != "null"]
-        if non_null:
+        non_null_t = [x for x in cast("list[Any]", t) if x != "null"]  # type: ignore[redundant-cast]
+        if non_null_t:
             inner = _kotlin_type(
-                {"type": non_null[0], **{k: v for k, v in s.items() if k != "type"}}
+                {"type": non_null_t[0], **{k: v for k, v in s.items() if k != "type"}}
             )
             return f"{inner}?"
         return "kotlinx.serialization.json.JsonElement?"

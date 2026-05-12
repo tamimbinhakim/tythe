@@ -22,6 +22,8 @@ The bet: get the core loop right. Everything else is post-MVP.
 - [x] Multipart file uploads via a generic `File` parameter marker
 - [x] Cookie / header / query / body via `Annotated`
 - [x] DI container compatible with FastAPI's `Depends()`
+- [x] `Bytes` for raw request/response bodies (webhooks, downloads)
+- [x] `after(fn, …)` post-response hook + `ctx.set_status` / `ctx.set_header`
 - [x] Examples for Next.js, Vite/React, and SvelteKit
 - [x] One short hero demo: typed streaming end-to-end in **<50 lines**
 

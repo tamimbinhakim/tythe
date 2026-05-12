@@ -17,6 +17,10 @@ export interface RouteDescriptor {
   params?: ReadonlyArray<ParamDescriptor>;
   streams?: boolean;
   result?: boolean;
+  /** Body is raw bytes (Blob / Uint8Array / ArrayBuffer) — skip JSON envelope. */
+  binaryBody?: boolean;
+  /** Response is raw bytes — decode with `res.blob()` instead of `res.json()`. */
+  binaryResponse?: boolean;
 }
 
 export interface ClientConfig {
