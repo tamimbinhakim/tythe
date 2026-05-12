@@ -61,8 +61,11 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r --filter=./packages/* run test
+      # Build first: framework bindings import from "@tythe/ts" → ./dist,
+      # so the runtime package has to be compiled before its consumers
+      # run their vitest suite.
       - run: pnpm -r --filter=./packages/* run build
+      - run: pnpm -r --filter=./packages/* run test
 
   lint-py:
     name: Lint Python
