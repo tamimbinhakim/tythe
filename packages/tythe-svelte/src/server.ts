@@ -9,7 +9,7 @@ export interface SvelteRequestLike {
 }
 
 /** Call a Tythe method from a SvelteKit server load with auth/locale headers forwarded. */
-export async function tytheLoad<TApi extends object, K extends UnaryKeys<TApi> & string>(
+export async function loadQuery<TApi extends object, K extends UnaryKeys<TApi> & string>(
   api: TApi,
   method: K,
   args: ArgsOf<TApi[K]>,

@@ -15,17 +15,17 @@ describe("CSR safety", () => {
     expect(typeof globalThis.document).toBe("undefined");
 
     const mod = await import("../src/server.js");
-    expect(typeof mod.prefetchTythe).toBe("function");
-    expect(typeof mod.prefetchTytheMany).toBe("function");
-    expect(typeof mod.tytheQueryKey).toBe("function");
+    expect(typeof mod.prefetchQuery).toBe("function");
+    expect(typeof mod.prefetchQueries).toBe("function");
+    expect(typeof mod.getQueryKey).toBe("function");
   });
 
-  it("`tytheQueryKey` is deterministic for equal args", async () => {
-    const { tytheQueryKey } = (await import("../src/server.js")) as unknown as {
-      tytheQueryKey: (method: string, args: unknown) => readonly unknown[];
+  it("`getQueryKey` is deterministic for equal args", async () => {
+    const { getQueryKey } = (await import("../src/server.js")) as unknown as {
+      getQueryKey: (method: string, args: unknown) => readonly unknown[];
     };
-    const a = tytheQueryKey("getUser", { userId: 1 });
-    const b = tytheQueryKey("getUser", { userId: 1 });
+    const a = getQueryKey("getUser", { userId: 1 });
+    const b = getQueryKey("getUser", { userId: 1 });
     expect(a).toEqual(b);
   });
 });

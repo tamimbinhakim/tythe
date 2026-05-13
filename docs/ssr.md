@@ -29,7 +29,7 @@ import {
   HydrationBoundary,
   QueryClient,
 } from "@tanstack/react-query";
-import { prefetchTythe } from "@tythe/react/server";
+import { prefetchQuery } from "@tythe/react/server";
 import { forwardHeaders } from "@tythe/ts";
 import { headers } from "next/headers";
 
@@ -48,7 +48,7 @@ export default async function Page({
   const incoming = new Request("https://x/", { headers: await headers() });
   api.headers = forwardHeaders(incoming); // or pass per-call via `opts.headers`
 
-  await prefetchTythe(qc, api, "getUser", { userId: Number(id) });
+  await prefetchQuery(qc, api, "getUser", { userId: Number(id) });
 
   return (
     <HydrationBoundary state={dehydrate(qc)}>
@@ -65,7 +65,7 @@ renders instantly without a refetch.
 Multiple calls in parallel:
 
 ```ts
-await prefetchTytheMany(qc, api, [
+await prefetchQueries(qc, api, [
   ["getUser", { userId: 1 }],
   ["listPosts", { authorId: 1, limit: 20 }],
   ["getInbox", undefined],
@@ -76,11 +76,11 @@ await prefetchTytheMany(qc, api, [
 
 ```ts
 // src/routes/me/+page.server.ts
-import { tytheLoad } from "@tythe/svelte/server";
+import { loadQuery } from "@tythe/svelte/server";
 import { api } from "$lib/tythe/client";
 
 export const load = async (event) => ({
-  me: await tytheLoad(api, "me", undefined, event),
+  me: await loadQuery(api, "me", undefined, event),
 });
 ```
 
@@ -103,7 +103,7 @@ the result into the rendered HTML — no client refetch.
 // src/routes/me.tsx
 import { createAsync } from "@solidjs/router";
 import { getRequestEvent } from "solid-js/web";
-import { tytheServerCall } from "@tythe/solid/server";
+import { serverQuery } from "@tythe/solid/server";
 
 import { api } from "~/lib/tythe/client";
 
@@ -111,7 +111,7 @@ const fetchMe = async () => {
   "use server";
   const event = getRequestEvent();
   if (!event) throw new Error("server-only");
-  return tytheServerCall(api, "me", undefined, event.request);
+  return serverQuery(api, "me", undefined, event.request);
 };
 
 export default function Me() {

@@ -7,6 +7,6 @@ describe("CSR safety", () => {
     expect(typeof globalThis.document).toBe("undefined");
 
     const mod = await import("../src/server.js");
-    expect(typeof mod.tytheServerCall).toBe("function");
+    expect(typeof mod.serverQuery).toBe("function");
   });
 });

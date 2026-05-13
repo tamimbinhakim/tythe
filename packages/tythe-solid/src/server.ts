@@ -5,7 +5,7 @@ import type { ArgsOf, DataOf, UnaryKeys } from "./types.js";
 type Unary = (args?: unknown, opts?: { headers?: Record<string, string> }) => Promise<unknown>;
 
 /** Call a Tythe method from a SolidStart server function with auth/locale headers forwarded. */
-export async function tytheServerCall<TApi extends object, K extends UnaryKeys<TApi> & string>(
+export async function serverQuery<TApi extends object, K extends UnaryKeys<TApi> & string>(
   api: TApi,
   method: K,
   args: ArgsOf<TApi[K]>,
