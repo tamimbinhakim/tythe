@@ -1,6 +1,6 @@
 {
   "name": "@tythe/ts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tiny TypeScript runtime imported by Tythe-generated client.ts files.",
   "keywords": [
     "python",

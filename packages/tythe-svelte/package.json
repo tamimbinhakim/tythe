@@ -1,6 +1,6 @@
 {
   "name": "@tythe/svelte",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Svelte store bindings (query, mutation, subscription) for Tythe-generated clients.",
   "keywords": [
     "python",

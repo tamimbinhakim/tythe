@@ -1,6 +1,6 @@
 {
   "name": "@tythe/solid",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SolidJS resource bindings (query, mutation, subscription) for Tythe-generated clients.",
   "keywords": [
     "python",

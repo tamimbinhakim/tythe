@@ -1,7 +1,7 @@
 {
-  "packages/tythe": "0.1.0",
-  "packages/tythe-ts": "0.1.0",
-  "packages/tythe-react": "0.1.0",
-  "packages/tythe-svelte": "0.1.0",
-  "packages/tythe-solid": "0.1.0"
+  "packages/tythe": "0.1.1",
+  "packages/tythe-ts": "0.1.1",
+  "packages/tythe-react": "0.1.1",
+  "packages/tythe-svelte": "0.1.1",
+  "packages/tythe-solid": "0.1.1"
 }

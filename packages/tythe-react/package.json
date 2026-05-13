@@ -1,6 +1,6 @@
 {
   "name": "@tythe/react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React hooks (useQuery, useMutation, useSubscription) on top of TanStack Query for Tythe-generated clients.",
   "keywords": [
     "python",
