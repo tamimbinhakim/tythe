@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import msgspec
+import pytest
 
 from tythe import App, raises, stream
 from tythe.codegen import render, write
@@ -415,6 +416,110 @@ def test_long_method_signature_wraps_args() -> None:
     # Args + opts wrap to their own lines once the inline form exceeds 100 cols.
     assert "searchWithManyFilters(\n    args:" in out
     assert "opts?: CallOptions,\n  )" in out
+
+
+def test_struct_named_array_gets_renamed_to_avoid_shadowing_builtin() -> None:
+    """A user struct called ``Array`` must not be emitted as ``export type Array``."""
+
+    class Array(msgspec.Struct):
+        items: list[int]
+
+    app = App()
+
+    @app.post("/arr")
+    async def arr(data: Array) -> Array:
+        return data
+
+    out = render(build_ir(app))
+    assert "export type Array =" not in out
+    # The render path always uses the disambiguated name, both for the type
+    # declaration and at every reference site — so no orphaned `Array` refs.
+    assert "export type Array " not in out
+
+
+def test_struct_named_delete_gets_renamed() -> None:
+    """JS reserved words like ``delete`` are not valid top-level type names."""
+
+    class delete(msgspec.Struct):
+        x: int
+
+    app = App()
+
+    @app.post("/d")
+    async def d(data: delete) -> delete:
+        return data
+
+    out = render(build_ir(app))
+    assert "export type delete " not in out
+
+
+def test_route_name_collision_raises() -> None:
+    """Two routes that camelCase to the same TS name fail loudly at render."""
+    app = App()
+
+    @app.get("/a")
+    async def get_user() -> int:
+        return 1
+
+    @app.get("/b")
+    async def getUser() -> int:  # collision with `get_user` is the point of the test
+        return 2
+
+    ir = build_ir(app)
+    with pytest.raises(ValueError, match="getUser"):
+        render(ir)
+
+
+def test_enum_const_collision_with_type_name_gets_enum_suffix() -> None:
+    """If ``UserRole`` is already a user-defined type, the enum const becomes ``UserRoleEnum``."""
+
+    class UserRole(msgspec.Struct):
+        slug: str
+
+    class User(msgspec.Struct):
+        id: int
+        role: Literal["admin", "member"]
+
+    app = App()
+
+    @app.get("/users/{user_id}")
+    async def get_user(user_id: int) -> User:
+        return User(id=user_id, role="admin")
+
+    @app.get("/roles")
+    async def list_roles() -> list[UserRole]:
+        return []
+
+    out = render(build_ir(app))
+    assert "export type UserRole =" in out  # User struct keeps its name.
+    # Enum const renamed to avoid clobbering the type.
+    assert "export const UserRoleEnum = " in out
+    assert "export const UserRole = " not in out
+
+
+def test_duplicate_enum_const_names_get_numeric_suffix() -> None:
+    """Two structs that both produce a ``StatusValue`` const each get unique names."""
+
+    class A(msgspec.Struct):
+        status: Literal["a", "b"]
+
+    class B(msgspec.Struct):
+        status: Literal["c", "d"]
+
+    app = App()
+
+    @app.get("/a")
+    async def aa() -> A:
+        return A(status="a")
+
+    @app.get("/b")
+    async def bb() -> B:
+        return B(status="c")
+
+    out = render(build_ir(app))
+    # Both structs get their own status const, distinct names.
+    assert "export const AStatus = " in out
+    assert "export const BStatus = " in out
 
 
 def test_exact_optional_vs_nullable() -> None:

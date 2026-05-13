@@ -78,6 +78,7 @@ def _section(title: str) -> str:
 
 
 def render(ir: AppIR) -> str:
+    _check_route_name_collisions(ir)
     parts: list[str] = [_render_header(ir)]
 
     # msgspec emits ``mod.Case`` when two modules each define ``Case``; otherwise
@@ -172,7 +173,18 @@ def _render_enum_consts(ir: AppIR, name_map: dict[str, str]) -> str:
     `transitionIssue({ to: IssueStatus.Closed })` refactors safely via IDE rename
     where the bare `"closed"` literal wouldn't. Skipped for the `kind`
     discriminator field (msgspec tag values) and any non-string enum.
+
+    Naming collisions handled:
+
+    - If the chosen ``<Struct><Field>`` name already exists as a type alias
+      (e.g. there's already an ``export type IssueStatus`` for a separate
+      Struct), we suffix with ``Enum`` (``IssueStatusEnum``) so neither
+      identifier shadows the other.
+    - If two different fields end up with the same const name, the second
+      and onwards get ``_2``, ``_3``, … so each ``export const`` is unique.
     """
+    type_names = set(name_map.values())
+    used: set[str] = set()
     consts: list[str] = []
     for raw in sorted(ir.components):
         props_any: Any = ir.components[raw].get("properties")
@@ -191,9 +203,31 @@ def _render_enum_consts(ir: AppIR, name_map: dict[str, str]) -> str:
                 continue
             str_values = cast("list[str]", values)
             entries = ", ".join(f"{_pascal(v)}: {json.dumps(v)}" for v in str_values)
-            const_name = struct_name + _pascal(field_name)
+            base = struct_name + _pascal(field_name)
+            const_name = _unique_enum_name(base, type_names, used)
+            used.add(const_name)
             consts.append(f"export const {const_name} = {{ {entries} }} as const;\n")
     return "\n".join(consts)
+
+
+def _unique_enum_name(base: str, type_names: set[str], used: set[str]) -> str:
+    """Resolve enum-const naming collisions deterministically.
+
+    Order of preference: ``Base`` → ``BaseEnum`` → ``BaseEnum_2``, ``BaseEnum_3``,…
+    The first form that doesn't collide with a type name or a previously-emitted
+    const wins.
+    """
+    if base not in type_names and base not in used and not _is_reserved(base):
+        return base
+    suffixed = f"{base}Enum"
+    if suffixed not in type_names and suffixed not in used and not _is_reserved(suffixed):
+        return suffixed
+    i = 2
+    while True:
+        candidate = f"{suffixed}_{i}"
+        if candidate not in type_names and candidate not in used:
+            return candidate
+        i += 1
 
 
 def _render_routes_namespace(ir: AppIR, name_map: dict[str, str]) -> str:
@@ -240,13 +274,98 @@ def _render_routes_namespace(ir: AppIR, name_map: dict[str, str]) -> str:
     return "".join(out)
 
 
-def _disambiguate(raw_keys: Iterable[str]) -> dict[str, str]:
-    """Map raw component keys → TS identifiers, prefixing colliding short names.
+# TS reserved/built-in names that must NOT appear as a top-level type alias.
+# Using `export type any = ...` is a TS error; using `Array` or `Promise` is a
+# silent footgun that shadows the global. The codegen renames any colliding
+# user struct to ``<Mod>Name`` to keep the generated file safe.
+_TS_RESERVED_TYPE_NAMES = frozenset(
+    {
+        # JS reserved words.
+        "break",
+        "case",
+        "catch",
+        "class",
+        "const",
+        "continue",
+        "debugger",
+        "default",
+        "delete",
+        "do",
+        "else",
+        "enum",
+        "export",
+        "extends",
+        "false",
+        "finally",
+        "for",
+        "function",
+        "if",
+        "import",
+        "in",
+        "instanceof",
+        "let",
+        "new",
+        "null",
+        "return",
+        "super",
+        "switch",
+        "this",
+        "throw",
+        "true",
+        "try",
+        "typeof",
+        "var",
+        "void",
+        "while",
+        "with",
+        "yield",
+        # TS built-in type names and ambient globals worth protecting.
+        "any",
+        "boolean",
+        "number",
+        "string",
+        "bigint",
+        "symbol",
+        "object",
+        "undefined",
+        "never",
+        "unknown",
+        "Object",
+        "Function",
+        "Array",
+        "Promise",
+        "Date",
+        "Error",
+        "Map",
+        "Set",
+        "RegExp",
+        "JSON",
+        "Math",
+        # Identifiers we generate ourselves and that must stay unshadowed.
+        "Result",
+        "CallOptions",
+        "RouteDescriptor",
+        "Routes",
+        "api",
+    }
+)
 
-    Unique types stay clean: ``Case`` → ``Case``. Collisions get the last
-    ``.``-separated module segment in PascalCase: ``billing.Case`` → ``BillingCase``,
-    ``legal.Case`` → ``LegalCase``. Stable across regenerations as long as the
-    set of colliding modules doesn't change.
+
+def _disambiguate(raw_keys: Iterable[str]) -> dict[str, str]:
+    """Map raw component keys → unique, safe TS identifiers.
+
+    Three passes:
+
+    1. **Short-name collision.** Unique short names stay clean (``Case`` →
+       ``Case``); collisions get the last ``.``-separated module segment
+       prefixed in PascalCase (``billing.Case`` → ``BillingCase``).
+    2. **Reserved-word collision.** If the chosen name matches a JS / TS
+       reserved word or a built-in (``Array``, ``Promise``, …), prefix it
+       with the module segment to disambiguate from the global.
+    3. **Final-output uniqueness.** Belt-and-braces tie-breaker — if two
+       different raw keys still produce the same TS name (e.g. after
+       reserved-word renaming), suffix the second one with ``_2``, ``_3``, …
+       Stable per ``raw_keys`` iteration order.
     """
     keys = list(raw_keys)
     by_short: dict[str, list[str]] = {}
@@ -257,14 +376,65 @@ def _disambiguate(raw_keys: Iterable[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for short, members in by_short.items():
         if len(members) == 1:
-            out[members[0]] = _safe_ident(short)
+            full = members[0]
+            if _is_reserved(short):
+                # Try module prefix first; fall back to ``_`` suffix when the
+                # raw key has no module (msgspec emits bare names for unique
+                # types). ``Array`` → ``Array_``; ``billing.Array`` → ``BillingArray``.
+                renamed = _module_prefixed(full)
+                out[full] = renamed if renamed != _safe_ident(short) else _safe_ident(short) + "_"
+            else:
+                out[full] = _safe_ident(short)
             continue
-        # Collision — prefix each with its last module segment, PascalCased.
+        # Short-name collision — prefix each with its last module segment.
         for full in members:
-            head, _, tail = full.rpartition(".")
-            prefix = head.rsplit(".", 1)[-1] if head else ""
-            out[full] = _safe_ident(_pascal(prefix) + tail) if prefix else _safe_ident(tail)
+            out[full] = _module_prefixed(full)
+
+    # Final-uniqueness sweep: if two keys still collide on the same TS name,
+    # suffix the duplicates. Iteration over `keys` keeps the assignment stable.
+    seen: dict[str, int] = {}
+    for raw in keys:
+        candidate = out[raw]
+        if candidate not in seen:
+            seen[candidate] = 1
+            continue
+        seen[candidate] += 1
+        out[raw] = f"{candidate}_{seen[candidate]}"
     return out
+
+
+def _is_reserved(name: str) -> bool:
+    return name in _TS_RESERVED_TYPE_NAMES
+
+
+def _check_route_name_collisions(ir: AppIR) -> None:
+    """Raise if two routes camelCase to the same TS method name.
+
+    Two routes registered as ``get_user`` and ``getUser`` would both render
+    as ``getUser`` and silently overwrite each other in the runtime ``byName``
+    map. We surface that as a build-time error instead — there's no clean
+    auto-rename, and the symptom on the client side (random route hitting the
+    wire) is the worst kind of debugging session.
+    """
+    seen: dict[str, str] = {}
+    for route in ir.routes:
+        camel = _to_camel(route.name)
+        prior = seen.get(camel)
+        if prior is not None and prior != route.name:
+            raise ValueError(
+                f"Tythe: routes {prior!r} and {route.name!r} both produce the TS "
+                f"method name {camel!r}. Rename one of the Python handlers to "
+                "disambiguate before regenerating.",
+            )
+        seen[camel] = route.name
+
+
+def _module_prefixed(full_key: str) -> str:
+    """Return ``<LastMod>Name`` for ``foo.bar.Name``; fall back to the safe name
+    when there is no module segment."""
+    head, _, tail = full_key.rpartition(".")
+    prefix = head.rsplit(".", 1)[-1] if head else ""
+    return _safe_ident(_pascal(prefix) + tail) if prefix else _safe_ident(tail)
 
 
 def _pascal(name: str) -> str:
