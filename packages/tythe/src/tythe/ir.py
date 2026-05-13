@@ -62,6 +62,7 @@ class RouteIR:
     binary_body: bool = False  # body is raw bytes (skip JSON envelope)
     binary_response: bool = False  # response is raw bytes (decode as Blob on TS side)
     form_body: bool = False  # body is application/x-www-form-urlencoded / multipart
+    description: str | None = None  # handler docstring, surfaces as JSDoc in client.ts
 
 
 @dataclass(slots=True)
@@ -209,6 +210,7 @@ def build_ir(app: App) -> AppIR:
                 binary_body=binary_body,
                 binary_response=binary_response,
                 form_body=form_body,
+                description=_extract_docstring(route.handler),
             ),
         )
 
@@ -218,6 +220,17 @@ def build_ir(app: App) -> AppIR:
 def _binary_schema() -> dict[str, Any]:
     """Wire shape for raw bytes — File uploads + ``bytes`` body/response slots."""
     return {"type": "string", "format": "binary"}
+
+
+def _extract_docstring(handler: Any) -> str | None:
+    """Pull a clean docstring off a handler, or ``None`` if there isn't one.
+
+    ``inspect.getdoc`` normalizes indentation the same way Python's ``help()``
+    does — strips a uniform leading indent and trailing whitespace — so the
+    text reads cleanly when re-emitted as JSDoc.
+    """
+    doc = inspect.getdoc(handler)
+    return doc if doc else None
 
 
 def _split_pydantic_schema(

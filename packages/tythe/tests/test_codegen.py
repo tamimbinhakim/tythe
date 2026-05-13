@@ -273,6 +273,150 @@ def test_kind_discriminator_skipped_for_enum_const() -> None:
     assert "BarKind" not in out
 
 
+def test_large_struct_wraps_to_multi_line() -> None:
+    """Structs past the inline-field threshold render one field per line."""
+
+    class BigStruct(msgspec.Struct):
+        a: int
+        b: int
+        c: int
+        d: int
+        e: int
+
+    app = App()
+
+    @app.post("/big")
+    async def big(data: BigStruct) -> BigStruct:
+        return data
+
+    out = render(build_ir(app))
+    assert "export type BigStruct = {\n  a: number;\n" in out
+    # Trailing comma on the close brace's preceding line is preserved.
+    assert "  e: number;\n};" in out
+
+
+def test_small_struct_stays_inline() -> None:
+    """≤ 3-field structs without nested objects stay on one line."""
+
+    class Tiny(msgspec.Struct):
+        a: int
+        b: str
+
+    app = App()
+
+    @app.post("/tiny")
+    async def tiny(data: Tiny) -> Tiny:
+        return data
+
+    out = render(build_ir(app))
+    assert "export type Tiny = { a: number; b: string };" in out
+
+
+def test_handler_docstring_emitted_as_jsdoc() -> None:
+    """Handler ``__doc__`` surfaces as JSDoc above the route method signature."""
+    app = App()
+
+    @app.get("/ping")
+    async def ping() -> str:
+        """Health probe — returns the literal string ``pong``."""
+        return "pong"
+
+    out = render(build_ir(app))
+    assert "/** Health probe — returns the literal string ``pong``. */" in out
+
+
+def test_multi_line_docstring_becomes_block_jsdoc() -> None:
+    """Docstrings with multiple lines render as ``/**\\n * ... \\n */`` blocks."""
+    app = App()
+
+    @app.get("/x")
+    async def x() -> int:
+        """First line.
+
+        Second paragraph with extra detail.
+        """
+        return 1
+
+    out = render(build_ir(app))
+    assert "/**\n   * First line." in out
+    assert "* Second paragraph with extra detail." in out
+
+
+def test_msgspec_auto_title_not_emitted_as_jsdoc() -> None:
+    """msgspec emits ``title=<ClassName>`` on every Struct; that's noise, not docs."""
+
+    class Plain(msgspec.Struct):
+        x: int
+
+    app = App()
+
+    @app.post("/plain")
+    async def plain(data: Plain) -> Plain:
+        return data
+
+    out = render(build_ir(app))
+    # The redundant `/** Plain */` JSDoc above `export type Plain` must NOT appear.
+    assert "/** Plain */\nexport type Plain" not in out
+
+
+def test_struct_docstring_emitted_as_jsdoc() -> None:
+    """A Struct docstring surfaces as JSDoc above its TS type declaration."""
+
+    class Thing(msgspec.Struct):
+        """A thing that lives in the system."""
+
+        id: int
+
+    app = App()
+
+    @app.post("/things")
+    async def create(data: Thing) -> Thing:
+        return data
+
+    out = render(build_ir(app))
+    assert "/** A thing that lives in the system. */\nexport type Thing" in out
+
+
+def test_route_descriptor_wraps_when_long() -> None:
+    """Long route descriptors break onto multiple lines with trailing commas."""
+    app = App()
+
+    @app.get("/posts")
+    async def list_posts(
+        tag: Annotated[list[str] | None, Header()] = None,
+        cursor: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[dict[str, int]]:
+        return []
+
+    out = render(build_ir(app))
+    # The multi-param list should wrap with item-per-line and trailing commas.
+    assert 'params: [\n      { name: "tag",' in out
+    assert "    ],\n  }," in out
+
+
+def test_long_method_signature_wraps_args() -> None:
+    """When the inline method signature exceeds the line budget, args break out."""
+    app = App()
+
+    @app.get("/search")
+    async def search_with_many_filters(
+        query: str,
+        category: str,
+        tag: str,
+        author: str,
+        sort: str,
+        cursor: str | None = None,
+    ) -> list[dict[str, str]]:
+        return []
+
+    out = render(build_ir(app))
+    # Args + opts wrap to their own lines once the inline form exceeds 100 cols.
+    assert "searchWithManyFilters(\n    args:" in out
+    assert "opts?: CallOptions,\n  )" in out
+
+
 def test_exact_optional_vs_nullable() -> None:
     """T: msgspec's required + anyOf-with-null translate to TS correctly."""
 
