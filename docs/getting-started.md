@@ -1,11 +1,8 @@
 # Getting started
 
-This is the 5-minute version. Real depth lives in
-[architecture](./architecture.md) and [design](./design.md). For now:
-install, write a handler, watch a typed TS client appear, call it from
-your frontend, ship something.
+Five minutes from clone to a typed Python ↔ TypeScript call.
 
-## What you need
+## Requirements
 
 | Tool   | Version | Why                                          |
 | ------ | ------- | -------------------------------------------- |
@@ -16,26 +13,18 @@ your frontend, ship something.
 
 ## 1. Install
 
-In your Python project:
-
 ```bash
+# In your Python project
 uv add tythe
-```
 
-In your frontend project (Next.js, Vite, SvelteKit, whatever):
-
-```bash
+# In your frontend project
 pnpm add @tythe/ts
 ```
 
-> The two halves talk through a generated `client.ts` file — neither
-> one needs to know where the other lives until you tell the CLI.
-
-## 2. Write your first handler
-
-Create `server/app.py`:
+## 2. Write a handler
 
 ```python
+# server/app.py
 from tythe import App
 import msgspec
 
@@ -63,31 +52,24 @@ async def create_post(data: CreatePost) -> Post:
     return post
 ```
 
-That's the whole API contract. No `class PostRequest(BaseModel)`
-declared in another file. The handler parameters are the request
-shape; the return annotation is the response shape.
+The handler signature is the API contract. No `class PostRequest(BaseModel)` in another file.
 
-## 3. Run the dev loop
+## 3. Run dev
 
 ```bash
 tythe dev server.app:app --out ../frontend/src/lib/tythe/client.ts
 ```
 
-What just happened:
+- Uvicorn starts on `http://127.0.0.1:8000`.
+- Tythe watches `*.py` and rewrites the generated `client.ts` atomically on save.
 
-1. Uvicorn started on `http://127.0.0.1:8000`.
-2. The watcher scanned `server/app.py`, found your `App`, and wrote a
-   typed `client.ts` to the path you passed.
-3. Any time you save a `.py` file, the watcher reruns extraction and
-   rewrites `client.ts` atomically.
-
-You can also do a one-shot:
+For a one-shot codegen (no server, no watcher):
 
 ```bash
 tythe codegen server.app:app --out ../frontend/src/lib/tythe/client.ts
 ```
 
-## 4. Call it from your frontend
+## 4. Call it
 
 ```ts
 // frontend/src/app/page.tsx
@@ -100,18 +82,11 @@ const got = await api.getPost({ postId: post.id });
 console.log(got.title);
 ```
 
-Open your editor. Hover over `api.createPost`. The return type is
-`Post`. The parameter type is `CreatePost`. If you pass
-`{ title: 123 }`, TypeScript yells at you before you save.
+Hover `api.createPost` in your editor. Return type: `Post`. Param type: `CreatePost`. Pass `{ title: 123 }` and TypeScript yells at you before you hit save.
 
-That's the whole loop.
+## 5. Streaming
 
-## 5. Stream typed events
-
-Any handler whose return annotation is `stream[T]` becomes a
-server-sent-events endpoint. You yield instances of `T` (or a
-discriminated union of `T`s); the generated client gives you a typed
-`AsyncIterable` back.
+`stream[T]` return → SSE on the wire → `AsyncIterable<T>` on the client.
 
 ```python
 from tythe import stream
@@ -132,8 +107,6 @@ async def ticks(count: int) -> stream[Tick | Done]:
     yield Done(total=count)
 ```
 
-On the frontend:
-
 ```ts
 const ac = new AbortController();
 for await (const ev of api.ticks({ count: 10 }, { signal: ac.signal })) {
@@ -142,17 +115,9 @@ for await (const ev of api.ticks({ count: 10 }, { signal: ac.signal })) {
 }
 ```
 
-Cancellation? Pass the `AbortSignal`. The server sees the disconnect
-via `request.is_disconnected()` and stops the work.
-
-> The same primitive works for anything that pushes typed events:
-> progress streams, log tailing, pubsub, partial responses, LLM token
-> streams. Tythe doesn't care what's inside the events — it just
-> carries them with the types intact.
+Cancellation: pass an `AbortSignal`. The server sees the disconnect via `request.is_disconnected()`. Drops are auto-reconnected on the client with `Last-Event-Id`.
 
 ## 6. Typed errors
-
-Declare which errors a handler can raise:
 
 ```python
 from dataclasses import dataclass
@@ -170,9 +135,6 @@ async def get_post(post_id: int) -> Post:
     return POSTS[post_id]
 ```
 
-On the TS side you get a `Result<Post, PostNotFound>` shape —
-TypeScript forces you to handle the typed error in a way it can check:
-
 ```ts
 const result = await api.getPost({ postId: 42 });
 if (result.ok) {
@@ -182,11 +144,11 @@ if (result.ok) {
 }
 ```
 
-## 7. More primitives
+TypeScript forces you to handle each declared error case before reaching `result.data`.
 
-Once the basics click, you have a small toolbox of bottom-level pieces
-to reach for. Each is documented with examples in the
-[reference](./reference.md); short version below.
+## 7. Other primitives you'll reach for
+
+Each has a one-liner here and a full example in [reference](./reference.md).
 
 ### Raw bodies — `Bytes`
 
@@ -202,9 +164,9 @@ async def csv(id: str) -> Bytes:
     return render_csv(id)
 ```
 
-TS side: `Blob | Uint8Array | ArrayBuffer` in, `Blob` out. No JSON envelope.
+TS: `Blob | Uint8Array | ArrayBuffer` in, `Blob` out.
 
-### HTML forms — `Annotated[T, Form()]`
+### Form bodies
 
 ```python
 from tythe import Form
@@ -233,7 +195,7 @@ async def create(data: CreateIssue, ctx: Context) -> Issue:
     return issue
 ```
 
-### After-response hooks — `after()`
+### Post-response hooks — `after()`
 
 ```python
 from tythe import after
@@ -241,44 +203,53 @@ from tythe import after
 @app.post("/posts")
 async def create_post(data: CreatePost) -> Post:
     post = save(data)
-    after(notify_webhook, post.id)  # runs after the response is sent
+    after(notify_webhook, post.id)
     return post
 ```
 
-Errors swallowed (response is already gone). Sync + async both supported.
+Runs after the response is sent. Errors swallowed (response is gone). Sync + async both supported.
 
-### List-valued query — `Annotated[list[T], Query()]`
+### List query params
 
 ```python
 @app.get("/issues")
 async def list_issues(
-    tag: Annotated[list[str], Query()] = None,  # ?tag=bug&tag=ui → ["bug", "ui"]
+    tag: Annotated[list[str], Query()] = None,
 ) -> Page: ...
 ```
+
+`?tag=bug&tag=ui` → `["bug", "ui"]`. The TS client expands array args back into repeated keys.
+
+## 8. SSR (Next.js / SvelteKit / Solid Start)
+
+Prefetch on the server, hydrate on the client — first paint with no waterfall.
+
+```tsx
+// Next.js App Router server component
+import { prefetchQuery } from "@tythe/react/server";
+
+const qc = new QueryClient();
+await prefetchQuery(qc, api, "getUser", { userId: 1 });
+return <HydrationBoundary state={dehydrate(qc)}>{...}</HydrationBoundary>;
+```
+
+Full SSR guide: [`docs/ssr.md`](./ssr.md).
 
 ## Where to go next
 
 - [Reference](./reference.md) — every primitive in one page.
-- [Architecture](./architecture.md) — what's actually happening under
-  the hood.
-- [Design](./design.md) — why msgspec, why SSE, why no OpenAPI by
-  default, why no vertical integrations in core.
-- [`docs/auth.md`](./auth.md) — auth recipes (JWT, sessions, NextAuth).
+- [SSR](./ssr.md) — Next.js / SvelteKit / Solid Start prefetch helpers.
+- [Auth recipes](./auth.md) — JWT, sessions, NextAuth.
+- [Architecture](./architecture.md) — what's happening under the hood (for contributors).
 - [`examples/`](../examples) — runnable starter projects.
 
 ## Troubleshooting
 
 **The watcher says "no `App` found".**
-The argument to `tythe dev` is `module:attr`, not a path. Make sure
-`server/app.py` defines `app = App()` and that the working directory
-is the Python project root (so `server.app` is importable).
+`tythe dev` takes `module:attr`, not a path. Make sure `server/app.py` defines `app = App()` and the working directory is the Python project root.
 
 **My TS types are `any`.**
-Either you're missing `@tythe/ts`, or your editor hasn't picked up
-the generated `client.ts`. Restart the TypeScript server in your
-editor.
+You're missing `@tythe/ts`, or your editor hasn't picked up the generated `client.ts`. Restart the TypeScript server.
 
 **Streaming doesn't cancel server-side.**
-Make sure your handler periodically checks
-`request.is_disconnected()` (or yields control via `await`). A tight
-CPU loop will keep running until the next await point.
+Your handler needs to periodically `await` (or check `request.is_disconnected()`). A tight CPU loop will keep running until the next await.
