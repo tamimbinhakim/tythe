@@ -12,7 +12,8 @@ clients. Three factory functions on top of the typed `api`:
 ## Install
 
 ```bash
-pnpm add @dyadpy/svelte @dyadpy/ts svelte
+pnpm add @dyadpy/svelte@alpha @dyadpy/ts@alpha svelte
+# alpha channel — drop `@alpha` once v0.1.0 ships
 ```
 
 ## Use

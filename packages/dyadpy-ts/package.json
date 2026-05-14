@@ -1,6 +1,6 @@
 {
   "name": "@dyadpy/ts",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.0",
   "description": "Tiny TypeScript runtime imported by Dyadpy-generated client.ts files.",
   "keywords": [
     "python",

@@ -4,7 +4,7 @@
 > generates for your frontend.
 
 ```bash
-pnpm add @dyadpy/ts
+pnpm add @dyadpy/ts@alpha   # alpha channel — drop `@alpha` once v0.1.0 ships
 ```
 
 You shouldn't have to think about this package much. The

@@ -1,6 +1,6 @@
 {
   "name": "@dyadpy/solid",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.0",
   "description": "SolidJS resource bindings (query, mutation, subscription) for Dyadpy-generated clients.",
   "keywords": [
     "python",

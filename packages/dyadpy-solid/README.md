@@ -12,7 +12,8 @@ clients. Three factory functions on top of the typed `api`:
 ## Install
 
 ```bash
-pnpm add @dyadpy/solid @dyadpy/ts solid-js
+pnpm add @dyadpy/solid@alpha @dyadpy/ts@alpha solid-js
+# alpha channel — drop `@alpha` once v0.1.0 ships
 ```
 
 ## Use

@@ -3,7 +3,7 @@
 > A type-safe RPC bridge between Python and TypeScript.
 
 ```bash
-uv add dyadpy
+uv add 'dyadpy==0.1.0a0'   # alpha — drop the pin once v0.1.0 ships
 ```
 
 This is the Python half of [Dyadpy](https://github.com/tamimbinhakim/dyadpy). It

@@ -13,12 +13,15 @@ Five minutes from clone to a typed Python ↔ TypeScript call.
 
 ## 1. Install
 
+> Dyadpy is in **alpha**. The version pin and `@alpha` tag below opt
+> you into the prerelease channel; once v0.1.0 ships, drop both.
+
 ```bash
 # In your Python project
-uv add dyadpy
+uv add 'dyadpy==0.1.0a0'
 
 # In your frontend project
-pnpm add @dyadpy/ts
+pnpm add @dyadpy/ts@alpha
 ```
 
 ## 2. Write a handler

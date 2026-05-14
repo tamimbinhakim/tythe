@@ -5,7 +5,8 @@
 > [TanStack Query](https://tanstack.com/query/latest).
 
 ```bash
-pnpm add @dyadpy/react @dyadpy/ts @tanstack/react-query
+pnpm add @dyadpy/react@alpha @dyadpy/ts@alpha @tanstack/react-query
+# alpha channel — drop `@alpha` once v0.1.0 ships
 ```
 
 `@dyadpy/react` adds three hooks on top of your generated `client.ts`:
