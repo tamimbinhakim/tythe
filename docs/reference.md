@@ -245,6 +245,31 @@ switch (
 }
 ```
 
+### Exceptions inside generic types
+
+An Exception subclass nested inside a user-defined generic Struct (e.g. a
+`BatchResult[T, E]` where `E` is a typed error) resolves to the same
+tagged-Struct schema as a top-level `@raises(E)` would. The TS client can
+still narrow on `error.kind`, just one level deeper:
+
+```python
+class BatchFailure(msgspec.Struct, Generic[T, E]):
+    input: T
+    error: E
+
+class BatchResult(msgspec.Struct, Generic[T, E]):
+    ok: list[T]
+    failed: list[BatchFailure[T, E]]
+
+@app.post("/users:bulk")
+async def create_many(items: list[NewUser]) -> BatchResult[User, BadRequest]:
+    ...
+```
+
+`BadRequest` shows up inline in the schema with a `kind: "BadRequest"`
+discriminator — no separate `@raises` declaration needed for the
+generic-parameter case.
+
 ## Streaming
 
 ```python

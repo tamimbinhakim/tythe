@@ -544,3 +544,48 @@ def test_exact_optional_vs_nullable() -> None:
     assert "b?: number" in out
     assert "c: number | null" in out
     assert "d?: number | null" in out
+
+
+# Module-scope types for the generics test. msgspec resolves forward refs in
+# the class's own globals, so these can't live inside the test function when
+# ``from __future__ import annotations`` is active.
+from typing import Generic, TypeVar  # noqa: E402
+
+_GenT = TypeVar("_GenT")
+_GenE = TypeVar("_GenE")
+
+
+class _GenBadRequest(Exception):
+    """Stand-in for a typed HTTP error inside a generic type parameter."""
+
+
+class _GenFailure(msgspec.Struct, Generic[_GenT, _GenE]):
+    input: _GenT
+    error: _GenE
+
+
+class _GenBatchOut(msgspec.Struct, Generic[_GenT, _GenE]):
+    ok: list[_GenT]
+    failed: list[_GenFailure[_GenT, _GenE]]
+
+
+class _GenItem(msgspec.Struct):
+    name: str
+
+
+def test_generic_struct_with_exception_in_type_args() -> None:
+    """User-defined generics with an Exception class inside (e.g. ``BatchResult[T, E]``)
+    must flow through the IR — msgspec needs the schema_hook the IR installs.
+    """
+    app = App()
+
+    @app.post("/bulk")
+    async def bulk(items: list[_GenItem]) -> _GenBatchOut[_GenItem, _GenBadRequest]:
+        return _GenBatchOut(ok=[], failed=[])
+
+    out = render(build_ir(app))
+    # The generic parameterization reaches the components map; the error's
+    # synthesized tagged Struct surfaces inline so the TS client can narrow
+    # on ``error.kind``.
+    assert "GenBatchOut" in out
+    assert "kind" in out

@@ -142,9 +142,35 @@ def build_ir(app: App) -> AppIR:
     schemas_by_index: dict[int, dict[str, Any]] = {}
     components: dict[str, dict[str, Any]] = {}
     if msgspec_types:
+        # A user-defined generic like ``BatchResult[T, E]`` may parameterize
+        # ``E`` with a bare Exception subclass — msgspec doesn't know how to
+        # emit a schema for that on its own. Resolve to the same synthesized
+        # tagged Struct the top-level ``@raises`` path uses so the TS client
+        # can narrow on ``error.kind`` either way. We inline the schema (no
+        # ``$ref``) because the schema_hook can't add to the shared components
+        # dict — codegen tolerates the duplication.
+        def _schema_hook(t: type) -> dict[str, Any]:
+            # ``object`` (and bare ``Any``) shows up when a generic Struct uses
+            # ``T`` for a heterogeneous slot — emit "any" rather than failing.
+            if t is object:
+                return {}
+            if isinstance(t, type) and issubclass(t, Exception):
+                synth = _synth_exc_type(t)
+                full = msgspec.json.schema(synth)
+                defs = cast("dict[str, dict[str, Any]]", full.pop("$defs", {}) or {})
+                ref = full.get("$ref")
+                if isinstance(ref, str):
+                    name = ref.rsplit("/", 1)[-1]
+                    inlined = defs.get(name)
+                    if inlined is not None:
+                        return inlined
+                return full
+            raise TypeError(t)
+
         real_schemas, real_components = msgspec.json.schema_components(
             msgspec_types,
             ref_template=_REF_TEMPLATE,
+            schema_hook=_schema_hook,
         )
         for i, s in zip(msgspec_indices, real_schemas, strict=True):
             schemas_by_index[i] = s
